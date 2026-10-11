@@ -6,7 +6,7 @@ public static partial class MediaValidator
 {
     public const int MaxIdLength = 200;
 
-    [GeneratedRegex("^[A-Za-z0-9_-]{11}$")]
+    [GeneratedRegex(@"^[A-Za-z0-9_-]{11}\z")]
     private static partial Regex YouTubeId();
 
     /// <summary>Geçerliyse null, değilse Türkçe hata mesajı döner.</summary>

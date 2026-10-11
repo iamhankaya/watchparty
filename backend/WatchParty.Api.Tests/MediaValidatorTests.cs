@@ -16,6 +16,7 @@ public class MediaValidatorTests
     [InlineData("youtube", "dQw4w9WgXc", "YouTube")] // 10 karakter
     [InlineData("youtube", "dQw4w9WgXcQ!", "YouTube")]
     [InlineData("youtube", "<script>xx>", "YouTube")]
+    [InlineData("youtube", "dQw4w9WgXcQ\n", "YouTube")] // sondaki satır sonu
     [InlineData("file", "http://cdn.example.com/a.mp4", "https")]
     [InlineData("file", "javascript:alert(1)", "https")]
     [InlineData("file", "/relative/a.mp4", "https")]
