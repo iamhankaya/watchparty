@@ -36,11 +36,6 @@ export function ShareBox({ code, status }: { code: string; status: ConnectionSta
         <button onClick={() => copy("code")}>{copied === "code" ? "Kopyalandı ✓" : "Kodu kopyala"}</button>
         <button onClick={() => copy("link")}>{copied === "link" ? "Kopyalandı ✓" : "Linki kopyala"}</button>
       </div>
-      {status === "disconnected" && (
-        <button className="full" onClick={() => window.location.reload()}>
-          Yeniden bağlan
-        </button>
-      )}
     </div>
   );
 }

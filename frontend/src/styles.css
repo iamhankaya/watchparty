@@ -150,3 +150,6 @@ button.code { display: block; width: 100%; background: none; border: 0; color: v
 button.code:hover { color: var(--accent); }
 .share-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
 .share-buttons button { padding: 9px 8px; }
+
+.lost-banner { border-color: var(--danger); }
+.lost-banner p { margin: 0; }

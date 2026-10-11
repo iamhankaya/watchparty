@@ -2,6 +2,7 @@ import * as signalR from "@microsoft/signalr";
 import type { ChatMessage, ConnectionStatus, JoinResult, MediaType, Participant, PlaybackState } from "./types";
 import { USE_MOCK } from "./api";
 import { MockLobbyConnection } from "./mock";
+import { describeConnectionError } from "./errors";
 
 /** Sunucudan gelen olaylar. İsimler hub'daki SendAsync("...") isimleriyle aynı. */
 export interface LobbyEvents {
@@ -14,6 +15,8 @@ export interface LobbyEvents {
   /** İlk katılımda ve kopup yeniden bağlanınca (yeni selfId ile) çağrılır. */
   joined(result: JoinResult): void;
   statusChanged(status: ConnectionStatus): void;
+  /** Bağlantı kullanıcı istemeden koptu (ya da yeniden katılım reddedildi); reason kullanıcıya gösterilecek metindir. */
+  connectionLost(reason: string): void;
 }
 
 /** Hub'daki sunucu metotları. Gerçek SignalR ve sahte (mock) bağlantı aynı arayüzü uygular. */
@@ -55,14 +58,22 @@ class SignalRLobbyConnection implements LobbyConnection {
       if (this.joinArgs) {
         try {
           events.joined(await this.conn.invoke<JoinResult>("JoinLobby", ...this.joinArgs));
-        } catch {
-          events.statusChanged("disconnected"); // lobi silinmiş ya da dolmuş olabilir
+        } catch (e) {
+          // Lobi silinmiş ya da dolmuş olabilir; sebebi bildirip bağlantıyı kapatırız.
+          events.statusChanged("disconnected");
+          events.connectionLost(describeConnectionError(e));
+          this.joinArgs = null;
+          void this.conn.stop();
           return;
         }
       }
       events.statusChanged("connected");
     });
-    this.conn.onclose(() => events.statusChanged("disconnected"));
+    this.conn.onclose((error) => {
+      // Kullanıcı kendisi stop() ettiyse (joinArgs === null) sebep göstermeyiz.
+      events.statusChanged("disconnected");
+      if (this.joinArgs) events.connectionLost(describeConnectionError(error));
+    });
   }
 
   async start() {

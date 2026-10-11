@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { getLobby } from "../lib/api";
 import { ServerClock } from "../lib/clock";
 import { createLobbyConnection, type LobbyConnection } from "../lib/connection";
-import { errorMessage } from "../lib/errors";
+import { describeConnectionError, errorMessage } from "../lib/errors";
 import { getClientId, getNickname, getVolume, saveNickname, saveVolume, type VolumeSetting } from "../lib/identity";
 import { SyncEngine } from "../lib/sync";
 import {
@@ -42,6 +42,9 @@ export function LobbyPage({ code, navigate }: Props) {
   const [blocked, setBlocked] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const [fatal, setFatal] = useState<string | null>(null);
+  // Bağlantı istemeden koptuysa sebep metni; "Yeniden bağlan" başarılı olunca temizlenir.
+  const [lostReason, setLostReason] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
   const [volume, setVolume] = useState<VolumeSetting>(getVolume);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [chatOpen, setChatOpen] = useState(true);
@@ -70,12 +73,20 @@ export function LobbyPage({ code, navigate }: Props) {
   }, []);
 
   const join = useCallback(
-    async (nick: string) => {
-      setPhase("joining");
+    async (nick: string, reconnect = false) => {
+      if (reconnect) {
+        // Eski bağlantıyı ve motoru kapat; stop() kullanıcı kapatması sayıldığı için ikinci bir uyarı çıkmaz.
+        engineRef.current?.stop();
+        void connRef.current?.stop();
+        setRetrying(true);
+      } else {
+        setPhase("joining");
+      }
 
       const engine = new SyncEngine(clockRef.current, setBlocked);
       engineRef.current = engine;
       engine.start();
+      engine.setPlayer(playerRef.current);
 
       const conn = createLobbyConnection({
         participantsChanged: setParticipants,
@@ -91,7 +102,9 @@ export function LobbyPage({ code, navigate }: Props) {
           setSelfId(r.selfId);
           setJoinedAsHost(r.isHost);
         },
-        statusChanged: setStatus,
+        // Eski bağlantının geç gelen olayları yeni bağlantının durumunu ezmesin.
+        statusChanged: (st) => connRef.current === conn && setStatus(st),
+        connectionLost: (reason) => connRef.current === conn && setLostReason(reason),
       });
       connRef.current = conn;
 
@@ -99,13 +112,22 @@ export function LobbyPage({ code, navigate }: Props) {
         await conn.start();
         await clockRef.current.sync(conn.ping);
         await conn.join(code, nick, getClientId());
+        setLostReason(null);
         setPhase("joined");
       } catch (e) {
         engine.stop();
         void conn.stop();
-        connRef.current = null;
-        setFatal(errorMessage(e));
-        setPhase("failed");
+        if (reconnect) {
+          // Lobi ekranında kal; yeni sebebi göster, kullanıcı tekrar deneyebilsin.
+          setStatus("disconnected");
+          setLostReason(describeConnectionError(e));
+        } else {
+          connRef.current = null;
+          setFatal(describeConnectionError(e));
+          setPhase("failed");
+        }
+      } finally {
+        if (reconnect) setRetrying(false);
       }
     },
     [code],
@@ -220,6 +242,15 @@ export function LobbyPage({ code, navigate }: Props) {
     );
   }
 
+  const lostBanner = lostReason && (
+    <div className="card lost-banner" role="alert">
+      <p>{lostReason}</p>
+      <button className="full" disabled={retrying} onClick={() => void join(nickname.trim() || getNickname(), true)}>
+        {retrying ? "Bağlanıyor..." : "Yeniden bağlan"}
+      </button>
+    </div>
+  );
+
   const me = participants.find((p) => p.id === selfId);
   const isHost = me ? me.isHost : joinedAsHost;
   const canControl = !hostOnly || isHost;
@@ -277,6 +308,7 @@ export function LobbyPage({ code, navigate }: Props) {
 
       <aside className="sidebar">
         <ShareBox code={code} status={status} />
+        {lostBanner}
         <Participants participants={participants} selfId={selfId} />
         {isHost && (
           <div className="card">
