@@ -14,7 +14,8 @@ public static partial class MediaValidator
     {
         if (type is not ("youtube" or "file"))
             return "Medya tipi 'youtube' ya da 'file' olmalı";
-        if (string.IsNullOrWhiteSpace(id) || id.Length > MaxIdLength)
+        // Baş/son boşluk (satır sonu dahil) reddedilir; biçim kontrollerinden önce yapılır.
+        if (string.IsNullOrWhiteSpace(id) || id.Length > MaxIdLength || id != id.Trim())
             return "Geçersiz medya id";
 
         if (type == "youtube")
