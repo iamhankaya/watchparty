@@ -44,4 +44,8 @@ It asserts on substrings of the Turkish `HubException` messages (e.g. "bulunamad
 - Player native controls are disabled; only our buttons send commands to the server, and player events are **never** sent back. This prevents feedback loops from programmatic seeks — preserve this when touching `players/` or `components/Controls.tsx`.
 - Routing is hand-rolled in `App.tsx` (`/` and `/l/CODE`), no router library.
 
+## Working agreements
+
+- When executing a multi-task plan with subagents, run tasks that touch disjoint files and don't consume each other's interfaces in parallel, each in its own git worktree, then merge into the feature branch and run the full test suite on the merged result. Dependent tasks stay sequential.
+
 Deployment target (planned, not yet in the repo): `dist/` on S3/CloudFront, backend on EC2 with CloudFront routing `/api` and `/hubs` to it (hence no CORS config).
