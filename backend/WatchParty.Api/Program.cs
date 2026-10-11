@@ -28,7 +28,9 @@ if (app.Services.GetRequiredService<IOptions<SecurityOptions>>().Value.TrustForw
 
 app.UseRateLimiter();
 
-app.UseStaticFiles();
+// test.html yalnızca geliştirme ortamında servis edilir
+if (app.Environment.IsDevelopment())
+    app.UseStaticFiles();
 
 app.MapGet("/api/health", () => new
 {
