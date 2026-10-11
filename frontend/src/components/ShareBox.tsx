@@ -1,14 +1,15 @@
 import { useState } from "react";
 import type { ConnectionStatus } from "../lib/types";
 
-const STATUS_TEXT: Record<ConnectionStatus, string> = {
+export const STATUS_TEXT: Record<ConnectionStatus, string> = {
   connecting: "Bağlanıyor",
   connected: "Bağlı",
   reconnecting: "Yeniden bağlanıyor",
   disconnected: "Bağlantı koptu",
 };
 
-export function ShareBox({ code, status }: { code: string; status: ConnectionStatus }) {
+// Lobi kodunu ya da linkini panoya kopyalar; "copied" kısa süre son kopyalananı gösterir.
+export function useCopy(code: string) {
   const [copied, setCopied] = useState<"code" | "link" | null>(null);
   const link = `${window.location.origin}/l/${code}`;
 
@@ -22,6 +23,12 @@ export function ShareBox({ code, status }: { code: string; status: ConnectionSta
       window.prompt("Kopyala:", text);
     }
   }
+
+  return { copied, copy };
+}
+
+export function ShareBox({ code, status }: { code: string; status: ConnectionStatus }) {
+  const { copied, copy } = useCopy(code);
 
   return (
     <div className="card">

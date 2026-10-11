@@ -2,12 +2,17 @@ import { useState, type FormEvent } from "react";
 import { createLobby } from "../lib/api";
 import { getClientId, getNickname, saveNickname } from "../lib/identity";
 import { MAX_NICKNAME } from "../lib/types";
+import { useAppearance } from "../lib/appearance";
+import { CinemaHome } from "./CinemaHome";
 
 interface Props {
   navigate(to: string): void;
 }
 
-export function HomePage({ navigate }: Props) {
+export type HomeForm = ReturnType<typeof useHomeForm>;
+
+// Ana sayfanın durumu ve işlemleri; iki tasarım da aynı mantığı kullanır.
+function useHomeForm(navigate: Props["navigate"]) {
   const [nickname, setNickname] = useState(getNickname());
   const [hostOnly, setHostOnly] = useState(false);
   const [joinCode, setJoinCode] = useState("");
@@ -38,6 +43,17 @@ export function HomePage({ navigate }: Props) {
     navigate(`/l/${code}`);
   }
 
+  return { nickname, setNickname, hostOnly, setHostOnly, joinCode, setJoinCode, busy, error, handleCreate, handleJoin };
+}
+
+export function HomePage({ navigate }: Props) {
+  const form = useHomeForm(navigate);
+  const { design } = useAppearance();
+  return design === "cinema" ? <CinemaHome form={form} /> : <ClassicHome form={form} />;
+}
+
+function ClassicHome({ form }: { form: HomeForm }) {
+  const { nickname, setNickname, hostOnly, setHostOnly, joinCode, setJoinCode, busy, error, handleCreate, handleJoin } = form;
   return (
     <main className="home">
       <section className="hero">

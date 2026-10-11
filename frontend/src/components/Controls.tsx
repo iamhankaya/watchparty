@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { formatTime } from "../lib/media";
 import type { PlaybackState } from "../lib/types";
 import type { VolumeSetting } from "../lib/identity";
+import { useAppearance } from "../lib/appearance";
+import { Icon } from "./Icon";
 
 interface Props {
   playback: PlaybackState | null;
@@ -34,6 +36,8 @@ export function Controls(props: Props) {
   const position = dragValue ?? Math.min(getPosition(), duration || Infinity);
   const isPlaying = playback?.isPlaying ?? false;
   const silent = volume.muted || volume.volume === 0;
+  // Sinema tasarımında emoji yerine SVG ikonlar kullanılır.
+  const cinema = useAppearance().design === "cinema";
 
   const commitSeek = () => {
     if (dragValue !== null) onSeek(dragValue);
@@ -45,13 +49,13 @@ export function Controls(props: Props) {
   return (
     <div className="controls">
       <button className="icon" disabled={disabled} onClick={isPlaying ? onPause : onPlay} title={isPlaying ? "Durdur" : "Oynat"}>
-        {isPlaying ? "❚❚" : "▶"}
+        {cinema ? <Icon name={isPlaying ? "pause" : "play"} /> : isPlaying ? "❚❚" : "▶"}
       </button>
       <button className="icon small skip" disabled={disabled} onClick={() => skip(-10)} title="10 sn geri">
-        −10
+        {cinema ? <><Icon name="back" /><span className="skip-n">10</span></> : "−10"}
       </button>
       <button className="icon small skip" disabled={disabled} onClick={() => skip(10)} title="10 sn ileri">
-        +10
+        {cinema ? <><Icon name="forward" /><span className="skip-n">10</span></> : "+10"}
       </button>
       <span className="time">{formatTime(position)}</span>
       <input
@@ -76,7 +80,7 @@ export function Controls(props: Props) {
           onClick={() => onVolume({ volume: volume.volume || 50, muted: !silent })}
           title={silent ? "Sesi aç" : "Sesi kapat"}
         >
-          {silent ? "🔇" : volume.volume < 50 ? "🔉" : "🔊"}
+          {cinema ? <Icon name={silent ? "mute" : volume.volume < 50 ? "volumeLow" : "volume"} /> : silent ? "🔇" : volume.volume < 50 ? "🔉" : "🔊"}
         </button>
         <input
           type="range"
@@ -92,11 +96,11 @@ export function Controls(props: Props) {
 
       {props.isFullscreen && (
         <button className={`icon small${props.chatOpen ? " active" : ""}`} onClick={props.onToggleChat} title="Sohbeti göster/gizle">
-          💬
+          {cinema ? <Icon name="chat" /> : "💬"}
         </button>
       )}
       <button className="icon small" onClick={props.onToggleFullscreen} title={props.isFullscreen ? "Tam ekrandan çık" : "Tam ekran"}>
-        {props.isFullscreen ? "🗗" : "⛶"}
+        {cinema ? <Icon name={props.isFullscreen ? "shrink" : "expand"} /> : props.isFullscreen ? "🗗" : "⛶"}
       </button>
     </div>
   );
