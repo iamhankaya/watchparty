@@ -1,0 +1,7 @@
+{
+  "name": "watchparty-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node e2e.mjs" },
+  "dependencies": { "@microsoft/signalr": "8.0.7" }
+}
