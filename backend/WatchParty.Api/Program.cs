@@ -8,6 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<SecurityOptions>(builder.Configuration.GetSection(SecurityOptions.Section));
 builder.Services.AddHttpRateLimits();
 builder.Services.AddSingleton<ILobbyStore, InMemoryLobbyStore>();
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ConnectionCounter>();
 builder.Services.AddSignalR(o => o.AddFilter<HubRateLimitFilter>());
 builder.Services.AddHostedService<LobbyCleanupService>();
