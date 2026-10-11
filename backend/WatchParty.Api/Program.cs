@@ -1,11 +1,32 @@
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.Options;
 using WatchParty.Api.Lobbies;
+using WatchParty.Api.Security;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.Configure<SecurityOptions>(builder.Configuration.GetSection(SecurityOptions.Section));
+builder.Services.AddHttpRateLimits();
 builder.Services.AddSingleton<ILobbyStore, InMemoryLobbyStore>();
 builder.Services.AddSignalR();
 builder.Services.AddHostedService<LobbyCleanupService>();
 builder.Services.AddHostedService<LobbyTickService>();
 var app = builder.Build();
+
+// Ayar Build() sonrası okunur; test/ortam yapılandırması da böylece görünür.
+if (app.Services.GetRequiredService<IOptions<SecurityOptions>>().Value.TrustForwardedHeaders)
+{
+    var forwarded = new ForwardedHeadersOptions
+    {
+        ForwardedHeaders = ForwardedHeaders.XForwardedFor,
+        ForwardLimit = 1,
+    };
+    // Proxy CloudFront/ALB olduğundan IP aralıkları sabit listelenemez; zinciri tek atlama ile sınırla.
+    forwarded.KnownIPNetworks.Clear();
+    forwarded.KnownProxies.Clear();
+    app.UseForwardedHeaders(forwarded);
+}
+
+app.UseRateLimiter();
 
 app.UseStaticFiles();
 
@@ -22,7 +43,7 @@ app.MapPost("/api/lobbies", (CreateLobbyRequest req, ILobbyStore store) =>
 
     var lobby = store.Create(req.ClientId, req.HostOnlyControl);
     return Results.Created($"/api/lobbies/{lobby.Code}", new { code = lobby.Code });
-});
+}).RequireRateLimiting(HttpRateLimits.CreateLobby);
 
 app.MapGet("/api/lobbies/{code}", (string code, ILobbyStore store) =>
 {
@@ -38,7 +59,7 @@ app.MapGet("/api/lobbies/{code}", (string code, ILobbyStore store) =>
         participantCount = lobby.Participants.Count,
         isFull = lobby.Participants.Count >= Lobby.MaxParticipants
     });
-});
+}).RequireRateLimiting(HttpRateLimits.LookupLobby);
 
 app.MapHub<LobbyHub>("/hubs/lobby");
 
