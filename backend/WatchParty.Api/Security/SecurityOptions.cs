@@ -6,7 +6,7 @@ public class SecurityOptions
 {
     public const string Section = "Security";
 
-    // CloudFront/ALB arkasında true olmalı; aksi halde X-Forwarded-For sahte olabilir.
+    // CloudFront arkasında true olmalı; aksi halde X-Forwarded-For sahte olabilir. Araya başka bir proxy (ör. ALB) girerse ForwardLimit artırılmalı.
     public bool TrustForwardedHeaders { get; set; } = false;
 
     // IP başına dakikalık HTTP limitleri
