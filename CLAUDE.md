@@ -19,6 +19,7 @@ Frontend (Node 20.19+ / 22.12+):
 cd frontend; npm install
 npm run dev        # http://localhost:5173, proxies /api and /hubs (incl. WebSocket) to BACKEND_URL (default http://localhost:5205)
 npm run dev:mock   # no backend needed: VITE_MOCK=true from .env.mock, tabs in the same browser share a fake server
+npm test           # vitest run (unit tests)
 npm run build      # tsc -b && vite build -> dist/ (also the only type check; there is no linter)
 ```
 
@@ -32,14 +33,14 @@ It asserts on substrings of the Turkish `HubException` messages (e.g. "bulunamad
 
 **Server is the single source of truth.** All lobby state lives in `InMemoryLobbyStore` (singleton `ConcurrentDictionary`, note the filename `InMemoryLobbyStore .cs` contains a space). Nothing is persisted; restarting the backend drops all lobbies.
 
-- REST (`Program.cs`): `POST /api/lobbies` (creates lobby, returns 6-char code from an alphabet without ambiguous chars), `GET /api/lobbies/{code}` (case-insensitive), `GET /api/health` (includes `serverTime`).
+- REST (`Program.cs`): `POST /api/lobbies` (rate limited; creates lobby, returns 6-char code from an alphabet without ambiguous chars), `GET /api/lobbies/{code}` (rate limited; case-insensitive), `GET /api/health` (includes `serverTime`).
 - SignalR hub `LobbyHub` at `/hubs/lobby`. A connection's lobby membership is stored in `Context.Items` (`lobbyCode`, `clientId`), so after a reconnect the server no longer knows the client and it must call `JoinLobby` again (the frontend `connection.ts` does this automatically).
 - Identity: `clientId` is a stable per-browser id (localStorage); `ConnectionId` is per-connection and is what clients see as participant `id`/`selfId`. Host is tracked by `HostClientId`, so a host who refreshes keeps the role. `clientId` is never sent to other clients.
 - Playback: every Play/Pause/Seek/SetMedia replaces the immutable `PlaybackState` record (with `UpdatedAt` = server unix ms) and broadcasts `PlaybackUpdated` to the lobby group. In host-only mode, non-hosts get a `HubException`.
 - Background services: `LobbyTickService` (1 s tick) transfers host to the oldest participant after the host has been gone 10 s and re-broadcasts playback every 10 s; `LobbyCleanupService` deletes lobbies empty for 10 min. Messages sent from both hub and services go through `LobbyEvents`.
-- `Lobby` state changes go through `Lobby` methods (`TryJoin`, `Leave`, `TryClose`, `TryTransferHost`) which take `Lobby.Gate`; hub `Update`/`SetControlMode` use `lock (lobby.Gate)`. Don't mutate lobby state from outside these.
+- `Lobby` is built via its constructor (`code`, `hostClientId`, `hostOnlyControl`) and its state fields have private setters; they change only through `Lobby` methods (`TryJoin`, `Leave`, `TryClose`, `TryTransferHost`) which take `Lobby.Gate`. The exceptions are `Playback` and `HostOnlyControl`, which hub `Update`/`SetControlMode` write under `lock (lobby.Gate)`. Don't mutate lobby state from outside these.
 - `Lobbies/MediaValidator.cs` validates media server-side: YouTube id `^[A-Za-z0-9_-]{11}\z`, file = absolute https URL, max 200 chars.
-- `Security/`: `HttpRateLimits` (per-IP fixed window on `POST`/`GET /api/lobbies`, 429), `HubRateLimitFilter` (per-connection token buckets for chat/playback/other, plus per-IP concurrent connection limit via `ConnectionCounter`), `ClientIp`. All limits come from the `Security` config section (`SecurityOptions`); Development raises the HTTP rate limits and the per-IP connection limit to 1000; the hub token buckets keep their defaults.
+- `Security/`: `HttpRateLimits` (per-IP fixed window on `POST`/`GET /api/lobbies`, 429), `HubRateLimitFilter` (per-connection `TokenBucket`s for chat/playback/other; timer-free, driven by `TimeProvider`, so tests use `FakeTimeProvider`; plus per-IP concurrent connection limit via `ConnectionCounter`), `ClientIp`. All rate/connection limits come from the `Security` config section (`SecurityOptions`, validated at startup; values must be >= 1); Development raises the HTTP rate limits and the per-IP connection limit to 1000; the hub token buckets keep their defaults.
 - Limits are duplicated in backend constants and `frontend/src/lib/types.ts` (20 participants, nickname 30, chat 500, media id 200, chat history 50) and in `lib/mock.ts`, which re-implements hub rules — keep all three in sync when changing hub behaviour.
 
 **Frontend sync model** (details in `frontend/README.md`):
