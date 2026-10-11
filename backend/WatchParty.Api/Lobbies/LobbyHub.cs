@@ -6,7 +6,6 @@ public class LobbyHub(ILobbyStore store) : Hub
 {
     private const int MaxNicknameLength = 30;
     private const int MaxChatLength = 500;
-    private static readonly string[] MediaTypes = ["youtube", "file"];
 
     public async Task<JoinResult> JoinLobby(string code, string nickname, string clientId)
     {
@@ -57,10 +56,8 @@ public class LobbyHub(ILobbyStore store) : Hub
 
     public Task SetMedia(string type, string id)
     {
-        if (!MediaTypes.Contains(type))
-            throw new HubException("Medya tipi 'youtube' ya da 'file' olmalı");
-        if (string.IsNullOrWhiteSpace(id) || id.Length > 200)
-            throw new HubException("Geçersiz medya id");
+        if (MediaValidator.Validate(type, id) is { } error)
+            throw new HubException(error);
 
         return Update(s => s with { MediaType = type, MediaId = id, IsPlaying = false, PositionSec = 0 });
     }
