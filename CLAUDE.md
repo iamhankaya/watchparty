@@ -26,7 +26,7 @@ Tests: `backend/WatchParty.Api.Tests` is an xUnit project (`WatchPartyFactory` r
 ```powershell
 cd backend\e2e; npm install; npm test          # BASE_URL env var overrides http://localhost:5205
 ```
-It asserts on substrings of the Turkish `HubException` messages (e.g. "bulunamadı", "Sadece host", "dolu"), so changing those messages breaks it. Run it with the backend in Development (appsettings.Development.json raises the rate/connection limits to 1000 because e2e opens many connections from one IP). `backend/WatchParty.Api/wwwroot/test.html` is a manual hub test page, served only in Development.
+It asserts on substrings of the Turkish `HubException` messages (e.g. "bulunamadı", "Sadece host", "dolu"), so changing those messages breaks it. Run it with the backend in Development (appsettings.Development.json raises the HTTP rate limits and the per-IP connection limit to 1000 (hub token buckets keep their defaults) because e2e opens many connections from one IP). `backend/WatchParty.Api/wwwroot/test.html` is a manual hub test page, served only in Development.
 
 ## Architecture
 
@@ -39,7 +39,7 @@ It asserts on substrings of the Turkish `HubException` messages (e.g. "bulunamad
 - Background services: `LobbyTickService` (1 s tick) transfers host to the oldest participant after the host has been gone 10 s and re-broadcasts playback every 10 s; `LobbyCleanupService` deletes lobbies empty for 10 min. Messages sent from both hub and services go through `LobbyEvents`.
 - `Lobby` state changes go through `Lobby` methods (`TryJoin`, `Leave`, `TryClose`, `TryTransferHost`) which take `Lobby.Gate`; hub `Update`/`SetControlMode` use `lock (lobby.Gate)`. Don't mutate lobby state from outside these.
 - `Lobbies/MediaValidator.cs` validates media server-side: YouTube id `^[A-Za-z0-9_-]{11}\z`, file = absolute https URL, max 200 chars.
-- `Security/`: `HttpRateLimits` (per-IP fixed window on `POST`/`GET /api/lobbies`, 429), `HubRateLimitFilter` (per-connection token buckets for chat/playback/other, plus per-IP concurrent connection limit via `ConnectionCounter`), `ClientIp`. All limits come from the `Security` config section (`SecurityOptions`); Development raises them.
+- `Security/`: `HttpRateLimits` (per-IP fixed window on `POST`/`GET /api/lobbies`, 429), `HubRateLimitFilter` (per-connection token buckets for chat/playback/other, plus per-IP concurrent connection limit via `ConnectionCounter`), `ClientIp`. All limits come from the `Security` config section (`SecurityOptions`); Development raises the HTTP rate limits and the per-IP connection limit to 1000; the hub token buckets keep their defaults.
 - Limits are duplicated in backend constants and `frontend/src/lib/types.ts` (20 participants, nickname 30, chat 500, media id 200, chat history 50) and in `lib/mock.ts`, which re-implements hub rules — keep all three in sync when changing hub behaviour.
 
 **Frontend sync model** (details in `frontend/README.md`):
