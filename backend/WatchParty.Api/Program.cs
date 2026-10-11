@@ -5,7 +5,10 @@ using WatchParty.Api.Lobbies;
 using WatchParty.Api.Security;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.Configure<SecurityOptions>(builder.Configuration.GetSection(SecurityOptions.Section));
+builder.Services.AddOptions<SecurityOptions>()
+    .Bind(builder.Configuration.GetSection(SecurityOptions.Section))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
 builder.Services.AddHttpRateLimits();
 builder.Services.AddSingleton<ILobbyStore, InMemoryLobbyStore>();
 builder.Services.AddSingleton<ConnectionCounter>();
@@ -22,7 +25,8 @@ if (app.Services.GetRequiredService<IOptions<SecurityOptions>>().Value.TrustForw
         ForwardedHeaders = ForwardedHeaders.XForwardedFor,
         ForwardLimit = 1,
     };
-    // Proxy CloudFront/ALB olduğundan IP aralıkları sabit listelenemez; zinciri tek atlama ile sınırla.
+    // CloudFront'un IP aralıkları sabit listelenemediğinden proxy'ler güvenilir kabul edilir; zincir tek atlama ile sınırlı.
+    // CloudFront ile uygulama arasına başka bir proxy (ör. ALB) girerse ForwardLimit artırılmalı.
     forwarded.KnownIPNetworks.Clear();
     forwarded.KnownProxies.Clear();
     app.UseForwardedHeaders(forwarded);

@@ -19,7 +19,7 @@ public static class HttpRateLimits
         return services;
     }
 
-    // Limit ayarlardan istek anında okunur (yapılandırma Build()'dan sonra da değişebilir).
+    // Ayarlar Build() sonrası çözülür, böylece test/ortam yapılandırması görünür; limit IP bölümü ilk oluşturulurken okunur.
     private static RateLimitPartition<string> Partition(HttpContext context, Func<SecurityOptions, int> limit)
     {
         var permitLimit = limit(context.RequestServices.GetRequiredService<IOptions<SecurityOptions>>().Value);
