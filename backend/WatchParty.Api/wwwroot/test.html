@@ -1,6 +1,6 @@
 <!doctype html>
 <html>
-<head><meta charset="utf-8"></head>
+<head><meta charset="utf-8"><title>WatchParty hub testi</title></head>
 <body>
   <input id="code" placeholder="Lobi kodu">
   <input id="nick" placeholder="Takma ad">
@@ -12,7 +12,11 @@
   <button id="pause">Pause</button>
   <button id="seek">Seek</button>
   <button id="media">Medya: dQw4w9WgXcQ</button>
+  <button id="ping">Ping</button>
   <label><input id="hostOnly" type="checkbox"> Sadece host</label>
+  <br><br>
+  <input id="msg" placeholder="Mesaj" style="width:300px">
+  <button id="send">Gönder</button>
   <ul id="log"></ul>
   <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@8.0.7/dist/browser/signalr.min.js"></script>
   <script>
@@ -22,17 +26,29 @@
     const pos = () => Number($("pos").value);
 
     const conn = new signalR.HubConnectionBuilder().withUrl("/hubs/lobby").withAutomaticReconnect().build();
-    conn.on("ParticipantsChanged", list => log("Lobidekiler: " + list.join(", ")));
+    conn.on("ParticipantsChanged", list => log("Lobidekiler: " + list.map(p => p.nickname + (p.isHost ? " (host)" : "")).join(", ")));
     conn.on("ControlModeChanged", hostOnly => { $("hostOnly").checked = hostOnly; log("Kontrol modu: " + (hostOnly ? "sadece host" : "herkes")); });
     conn.on("HostChanged", nick => log("Yeni host: " + nick));
     conn.on("PlaybackUpdated", state => log("Durum: " + JSON.stringify(state)));
+    conn.on("ChatHistory", msgs => msgs.forEach(m => log(`[geçmiş] ${m.nickname}: ${m.text}`)));
+    conn.on("ChatMessage", m => log(`${m.nickname}: ${m.text}`));
     conn.start().then(() => log("Bağlandı")).catch(e => log("Hata: " + e));
 
-    $("join").onclick = () => call("JoinLobby", $("code").value, $("nick").value, $("cid").value);
+    $("join").onclick = async () => {
+      const r = await conn.invoke("JoinLobby", $("code").value, $("nick").value, $("cid").value).catch(e => log("Hata: " + e.message));
+      if (r) log(`Katıldın. Host musun: ${r.isHost ? "evet" : "hayır"}`);
+    };
     $("play").onclick = () => call("Play", pos());
     $("pause").onclick = () => call("Pause", pos());
     $("seek").onclick = () => call("Seek", pos());
     $("hostOnly").onchange = () => call("SetControlMode", $("hostOnly").checked);
+    $("send").onclick = () => { call("SendChat", $("msg").value); $("msg").value = ""; };
+    $("ping").onclick = async () => {
+      const t0 = Date.now();
+      const serverNow = await conn.invoke("Ping");
+      const t1 = Date.now();
+      log(`Ping: gidiş-dönüş ${t1 - t0} ms, saat farkı ${(serverNow - (t0 + t1) / 2).toFixed(1)} ms`);
+    };
     $("media").onclick = () => call("SetMedia", "youtube", "dQw4w9WgXcQ");
   </script>
 </body>
