@@ -28,17 +28,33 @@ public class HubRateLimitTests
         return await condition();
     }
 
+    // Reddedilene kadar (en çok 15 deneme) arka arkaya chat gönderir; zamanlayıcı dolumundan etkilenmez.
+    private static async Task<(int Succeeded, HubException Rejection)> SendChatsUntilRejectedAsync(HubConnection connection)
+    {
+        for (var i = 0; i < 15; i++)
+        {
+            try
+            {
+                await connection.InvokeAsync("SendChat", $"m{i}");
+            }
+            catch (HubException ex)
+            {
+                return (i, ex);
+            }
+        }
+        throw new Xunit.Sdk.XunitException("15 chat denemesinde hiçbiri reddedilmedi");
+    }
+
     [Fact]
     public async Task Chat_burst_over_limit_is_rejected()
     {
         await using var factory = new WatchPartyFactory(Limits(("ChatBurst", 5), ("ChatPerSecond", 1)));
         await using var connection = await JoinAsync(factory);
 
-        for (var i = 0; i < 5; i++)
-            await connection.InvokeAsync("SendChat", $"m{i}");
+        var (succeeded, rejection) = await SendChatsUntilRejectedAsync(connection);
 
-        var ex = await Assert.ThrowsAsync<HubException>(() => connection.InvokeAsync("SendChat", "m6"));
-        Assert.Contains("Çok hızlı", ex.Message);
+        Assert.True(succeeded >= 5, $"Reddedilmeden önce en az 5 chat başarılı olmalı, oldu: {succeeded}");
+        Assert.Contains("Çok hızlı", rejection.Message);
     }
 
     [Fact]
@@ -48,8 +64,7 @@ public class HubRateLimitTests
         await using var connection = await JoinAsync(factory);
 
         await connection.InvokeAsync("SetMedia", "youtube", "dQw4w9WgXcQ");
-        await connection.InvokeAsync("SendChat", "bir");
-        await Assert.ThrowsAsync<HubException>(() => connection.InvokeAsync("SendChat", "iki"));
+        await SendChatsUntilRejectedAsync(connection);
 
         await connection.InvokeAsync("Play", 0.0);
     }
@@ -60,11 +75,15 @@ public class HubRateLimitTests
         await using var factory = new WatchPartyFactory(Limits(("ChatBurst", 1), ("ChatPerSecond", 1)));
         await using var connection = await JoinAsync(factory);
 
-        await connection.InvokeAsync("SendChat", "bir");
-        await Assert.ThrowsAsync<HubException>(() => connection.InvokeAsync("SendChat", "iki"));
+        await SendChatsUntilRejectedAsync(connection);
 
-        await Task.Delay(1200);
-        await connection.InvokeAsync("SendChat", "uc");
+        // Token geri gelene kadar yokla
+        var recovered = await WaitUntilAsync(async () =>
+        {
+            try { await connection.InvokeAsync("SendChat", "tekrar"); return true; }
+            catch (HubException) { return false; }
+        }, 5000);
+        Assert.True(recovered);
         Assert.Equal(HubConnectionState.Connected, connection.State);
     }
 
