@@ -104,7 +104,12 @@ export function LobbyPage({ code, navigate }: Props) {
         },
         // Eski bağlantının geç gelen olayları yeni bağlantının durumunu ezmesin.
         statusChanged: (st) => connRef.current === conn && setStatus(st),
-        connectionLost: (reason) => connRef.current === conn && setLostReason(reason),
+        connectionLost: (reason) => {
+          if (connRef.current !== conn) return;
+          setLostReason(reason);
+          // Tam ekranda banner görünmez; toast alanı görünür.
+          setToast({ text: reason, kind: "error" });
+        },
       });
       connRef.current = conn;
 
@@ -123,7 +128,7 @@ export function LobbyPage({ code, navigate }: Props) {
           setLostReason(describeConnectionError(e));
         } else {
           connRef.current = null;
-          setFatal(describeConnectionError(e));
+          setFatal(describeConnectionError(e, "Sunucuya bağlanılamadı"));
           setPhase("failed");
         }
       } finally {
@@ -247,6 +252,9 @@ export function LobbyPage({ code, navigate }: Props) {
       <p>{lostReason}</p>
       <button className="full" disabled={retrying} onClick={() => void join(nickname.trim() || getNickname(), true)}>
         {retrying ? "Bağlanıyor..." : "Yeniden bağlan"}
+      </button>
+      <button className="full" onClick={() => navigate("/")}>
+        Ana sayfaya dön
       </button>
     </div>
   );

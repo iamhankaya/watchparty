@@ -49,7 +49,7 @@ public class HubRateLimitFilter(ConnectionCounter counter, IOptions<SecurityOpti
 
         // Bucket yoksa kapalı başarısız ol: sınırsız çağrıya izin verme.
         if (!invocationContext.Context.Items.TryGetValue(key, out var value) || value is not TokenBucket bucket)
-            throw new InvalidOperationException("Bağlantının rate limit durumu bulunamadı");
+            throw new HubException("Bağlantı hazır değil, sayfayı yenile");
 
         if (!bucket.TryTake())
             throw new HubException("Çok hızlı istek gönderiyorsun, biraz bekle");

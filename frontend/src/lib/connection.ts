@@ -2,7 +2,7 @@ import * as signalR from "@microsoft/signalr";
 import type { ChatMessage, ConnectionStatus, JoinResult, MediaType, Participant, PlaybackState } from "./types";
 import { USE_MOCK } from "./api";
 import { MockLobbyConnection } from "./mock";
-import { describeConnectionError } from "./errors";
+import { describeConnectionError, toUserError } from "./errors";
 
 /** Sunucudan gelen olaylar. İsimler hub'daki SendAsync("...") isimleriyle aynı. */
 export interface LobbyEvents {
@@ -94,13 +94,22 @@ class SignalRLobbyConnection implements LobbyConnection {
     return result;
   }
 
-  setMedia = (type: MediaType, id: string) => this.conn.invoke<void>("SetMedia", type, id);
-  play = (pos: number) => this.conn.invoke<void>("Play", pos);
-  pause = (pos: number) => this.conn.invoke<void>("Pause", pos);
-  seek = (pos: number) => this.conn.invoke<void>("Seek", pos);
-  setControlMode = (hostOnly: boolean) => this.conn.invoke<void>("SetControlMode", hostOnly);
-  sendChat = (text: string) => this.conn.invoke<void>("SendChat", text);
-  ping = () => this.conn.invoke<number>("Ping");
+  // Kopuk bağlantıda SignalR'ın İngilizce hata metni kullanıcıya sızmasın.
+  private async call<T>(method: string, ...args: unknown[]): Promise<T> {
+    try {
+      return await this.conn.invoke<T>(method, ...args);
+    } catch (e) {
+      throw toUserError(e);
+    }
+  }
+
+  setMedia = (type: MediaType, id: string) => this.call<void>("SetMedia", type, id);
+  play = (pos: number) => this.call<void>("Play", pos);
+  pause = (pos: number) => this.call<void>("Pause", pos);
+  seek = (pos: number) => this.call<void>("Seek", pos);
+  setControlMode = (hostOnly: boolean) => this.call<void>("SetControlMode", hostOnly);
+  sendChat = (text: string) => this.call<void>("SendChat", text);
+  ping = () => this.call<number>("Ping");
 }
 
 export function createLobbyConnection(events: LobbyEvents): LobbyConnection {

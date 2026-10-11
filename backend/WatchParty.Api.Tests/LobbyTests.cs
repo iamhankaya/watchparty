@@ -127,6 +127,23 @@ public class LobbyTests
     }
 
     [Fact]
+    public void TryTransferHost_eşit_JoinedAt_için_ConnectionId_ile_deterministik_seçer()
+    {
+        var t0 = DateTimeOffset.UtcNow;
+        var lobby = NewLobby();
+        lobby.TryJoin(P("h1", "host"));
+        lobby.TryJoin(P("b", "cb") with { JoinedAt = t0 });
+        var a = P("a", "ca") with { JoinedAt = t0 };
+        lobby.TryJoin(a);
+        lobby.Leave("h1");
+
+        var next = lobby.TryTransferHost(t0.AddSeconds(11), TimeSpan.FromSeconds(10));
+
+        Assert.Equal(a, next);
+        Assert.Equal("ca", lobby.HostClientId);
+    }
+
+    [Fact]
     public void RemoveExpired_closes_lobby_and_removes_from_store()
     {
         var store = new InMemoryLobbyStore();

@@ -95,7 +95,7 @@ public class Lobby
                 return null;
             }
 
-            var nextHost = Participants.Values.OrderBy(p => p.JoinedAt).FirstOrDefault();
+            var nextHost = Participants.Values.OrderBy(p => p.JoinedAt).ThenBy(p => p.ConnectionId, StringComparer.Ordinal).FirstOrDefault();
             if (nextHost is null)
                 return null;
 
