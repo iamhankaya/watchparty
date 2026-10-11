@@ -1,0 +1,19 @@
+<!doctype html>
+<html><body>
+  <input id="code" placeholder="Lobi kodu">
+  <input id="nick" placeholder="Takma ad">
+  <button id="join">Katıl</button>
+  <ul id="log"></ul>
+  <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@8.0.7/dist/browser/signalr.min.js"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    const log = t => { const li = document.createElement("li"); li.textContent = t; $("log").append(li); };
+
+    const conn = new signalR.HubConnectionBuilder().withUrl("/hubs/lobby").withAutomaticReconnect().build();
+    conn.on("UserJoined", nick => log(nick + " lobiye katıldı"));
+    conn.start().then(() => log("Bağlandı")).catch(e => log("Hata: " + e));
+
+    $("join").onclick = () =>
+      conn.invoke("JoinLobby", $("code").value, $("nick").value).catch(e => log("Hata: " + e.message));
+  </script>
+</body></html>
