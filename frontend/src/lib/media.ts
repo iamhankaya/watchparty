@@ -34,6 +34,8 @@ export function parseMediaInput(input: string): ParsedMedia | null {
   }
 
   // YouTube değilse film URL'si kabul edilir (şimdilik doğrudan URL; ileride S3/CloudFront film id'si).
+  // Sunucu dosya için https zorunlu kılar; YouTube linkleri ise http ile de gelebilir (yalnızca id alınır).
+  if (url.protocol !== "https:") return null;
   return { type: "file", id: url.toString() };
 }
 
