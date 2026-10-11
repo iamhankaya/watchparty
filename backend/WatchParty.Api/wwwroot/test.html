@@ -4,6 +4,7 @@
 <body>
   <input id="code" placeholder="Lobi kodu">
   <input id="nick" placeholder="Takma ad">
+  <input id="cid" placeholder="clientId">
   <button id="join">Katıl</button>
   <br><br>
   <input id="pos" type="number" value="0" style="width:80px"> sn
@@ -11,6 +12,7 @@
   <button id="pause">Pause</button>
   <button id="seek">Seek</button>
   <button id="media">Medya: dQw4w9WgXcQ</button>
+  <label><input id="hostOnly" type="checkbox"> Sadece host</label>
   <ul id="log"></ul>
   <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@8.0.7/dist/browser/signalr.min.js"></script>
   <script>
@@ -21,13 +23,15 @@
 
     const conn = new signalR.HubConnectionBuilder().withUrl("/hubs/lobby").withAutomaticReconnect().build();
     conn.on("ParticipantsChanged", list => log("Lobidekiler: " + list.join(", ")));
+    conn.on("ControlModeChanged", hostOnly => { $("hostOnly").checked = hostOnly; log("Kontrol modu: " + (hostOnly ? "sadece host" : "herkes")); });
     conn.on("PlaybackUpdated", state => log("Durum: " + JSON.stringify(state)));
     conn.start().then(() => log("Bağlandı")).catch(e => log("Hata: " + e));
 
-    $("join").onclick = () => call("JoinLobby", $("code").value, $("nick").value);
+    $("join").onclick = () => call("JoinLobby", $("code").value, $("nick").value, $("cid").value);
     $("play").onclick = () => call("Play", pos());
     $("pause").onclick = () => call("Pause", pos());
     $("seek").onclick = () => call("Seek", pos());
+    $("hostOnly").onchange = () => call("SetControlMode", $("hostOnly").checked);
     $("media").onclick = () => call("SetMedia", "youtube", "dQw4w9WgXcQ");
   </script>
 </body>

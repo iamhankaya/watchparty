@@ -8,5 +8,6 @@ public class Lobby
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
     public ConcurrentDictionary<string, Participant> Participants {get;} = new ();
     public PlaybackState Playback { get; set; } = PlaybackState.Empty;
+    public bool HostOnlyControl { get; set; }
 }
-public record Participant(string ConnectionId, string Nickname);
+public record Participant(string ConnectionId, string Nickname, string ClientId);

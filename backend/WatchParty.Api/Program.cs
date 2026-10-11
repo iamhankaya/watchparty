@@ -13,7 +13,7 @@ app.MapGet("/api/health", () => new
 });
 app.MapPost("/api/lobbies", (CreateLobbyRequest req, ILobbyStore store) =>
 {
-    var lobby = store.Create(req.ClientId);
+    var lobby = store.Create(req.ClientId, req.HostOnlyControl);
     return Results.Created($"/api/lobbies/{lobby.Code}", new { code = lobby.Code });
 });
 app.MapGet("/api/lobbies/{code}", (string code, ILobbyStore store) =>

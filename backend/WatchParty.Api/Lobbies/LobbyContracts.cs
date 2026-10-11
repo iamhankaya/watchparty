@@ -1,3 +1,3 @@
 namespace WatchParty.Api.Lobbies;
 
-public record CreateLobbyRequest(string ClientId);
+public record CreateLobbyRequest(string ClientId, bool HostOnlyControl = false);
