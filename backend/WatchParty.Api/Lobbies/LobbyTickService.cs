@@ -39,20 +39,10 @@ public class LobbyTickService(ILobbyStore store, IHubContext<LobbyHub> hub, ILog
 
     private async Task TransferHostIfAway(Lobby lobby)
     {
-        if (lobby.HostAwaySince is not { } since || DateTimeOffset.UtcNow - since < HostGracePeriod)
-            return;
-        if (lobby.IsConnected(lobby.HostClientId))
-        {
-            lobby.HostAwaySince = null;
-            return;
-        }
-
-        var nextHost = lobby.Participants.Values.OrderBy(p => p.JoinedAt).FirstOrDefault();
+        var nextHost = lobby.TryTransferHost(DateTimeOffset.UtcNow, HostGracePeriod);
         if (nextHost is null)
             return;
 
-        lobby.HostClientId = nextHost.ClientId;
-        lobby.HostAwaySince = null;
         logger.LogInformation("Lobi {Code}: hostluk {Nickname} kişisine geçti", lobby.Code, nextHost.Nickname);
 
         await hub.Clients.Group(lobby.Code).SendAsync("HostChanged", nextHost.Nickname);

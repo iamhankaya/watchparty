@@ -21,13 +21,15 @@ public class LobbyHub(ILobbyStore store) : Hub
         var lobby = store.Get(code ?? "");
         if (lobby is null)
             throw new HubException("Lobi bulunamadı");
-        if (lobby.Participants.Count >= Lobby.MaxParticipants)
-            throw new HubException("Lobi dolu");
 
-        lobby.Participants[Context.ConnectionId] = new Participant(Context.ConnectionId, nickname, clientId);
-        lobby.EmptySince = null;
-        if (clientId == lobby.HostClientId)
-            lobby.HostAwaySince = null;
+        switch (lobby.TryJoin(new Participant(Context.ConnectionId, nickname, clientId)))
+        {
+            case JoinOutcome.Closed:
+                throw new HubException("Lobi bulunamadı");
+            case JoinOutcome.Full:
+                throw new HubException("Lobi dolu");
+        }
+
         Context.Items["lobbyCode"] = lobby.Code;
         Context.Items["clientId"] = clientId;
 
@@ -45,15 +47,7 @@ public class LobbyHub(ILobbyStore store) : Hub
         var lobby = CurrentLobby();
         if (lobby is not null)
         {
-            lobby.Participants.TryRemove(Context.ConnectionId, out var leaving);
-
-            // Host'un son bağlantısı gittiyse hostluğu hemen devretmiyoruz: sayfa yenileme olabilir.
-            // LobbyTickService kısa bir bekleme süresinden sonra devreder.
-            if (leaving is not null && leaving.ClientId == lobby.HostClientId && !lobby.IsConnected(lobby.HostClientId))
-                lobby.HostAwaySince = DateTimeOffset.UtcNow;
-
-            if (lobby.Participants.IsEmpty)
-                lobby.EmptySince = DateTimeOffset.UtcNow;
+            lobby.Leave(Context.ConnectionId);
 
             await LobbyEvents.SendParticipants(Clients, lobby);
         }
@@ -78,10 +72,14 @@ public class LobbyHub(ILobbyStore store) : Hub
     public async Task SetControlMode(bool hostOnly)
     {
         var lobby = CurrentLobby() ?? throw new HubException("Önce bir lobiye katıl");
-        if (!IsHost(lobby))
-            throw new HubException("Kontrol modunu sadece host değiştirebilir");
+        lock (lobby.Gate)
+        {
+            if (!IsHost(lobby))
+                throw new HubException("Kontrol modunu sadece host değiştirebilir");
 
-        lobby.HostOnlyControl = hostOnly;
+            lobby.HostOnlyControl = hostOnly;
+        }
+
         await Clients.Group(lobby.Code).SendAsync("ControlModeChanged", hostOnly);
     }
 
@@ -105,14 +103,14 @@ public class LobbyHub(ILobbyStore store) : Hub
     {
         var lobby = CurrentLobby() ?? throw new HubException("Önce bir lobiye katıl");
 
-        if (lobby.HostOnlyControl && !IsHost(lobby))
-            throw new HubException("Sadece host kontrol edebilir");
-        if (lobby.Playback.MediaId is null && change(lobby.Playback).MediaId is null)
-            throw new HubException("Önce bir medya seç");
-
         PlaybackState next;
-        lock (lobby)
+        lock (lobby.Gate)
         {
+            if (lobby.HostOnlyControl && !IsHost(lobby))
+                throw new HubException("Sadece host kontrol edebilir");
+            if (lobby.Playback.MediaId is null && change(lobby.Playback).MediaId is null)
+                throw new HubException("Önce bir medya seç");
+
             next = change(lobby.Playback) with { UpdatedAt = PlaybackState.Now() };
             lobby.Playback = next;
         }

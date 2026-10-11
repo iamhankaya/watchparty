@@ -43,3 +43,5 @@ app.MapGet("/api/lobbies/{code}", (string code, ILobbyStore store) =>
 app.MapHub<LobbyHub>("/hubs/lobby");
 
 app.Run();
+
+public partial class Program;

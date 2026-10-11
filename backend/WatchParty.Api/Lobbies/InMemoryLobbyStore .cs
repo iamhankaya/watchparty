@@ -36,7 +36,7 @@ public class InMemoryLobbyStore : ILobbyStore
         var removed = 0;
         foreach (var (code, lobby) in _lobbies)
         {
-            if (lobby.EmptySince is { } since && since < cutoff && _lobbies.TryRemove(code, out _))
+            if (lobby.TryClose(cutoff) && _lobbies.TryRemove(code, out _))
                 removed++;
         }
         return removed;
