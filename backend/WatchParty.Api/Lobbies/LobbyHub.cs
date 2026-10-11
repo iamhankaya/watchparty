@@ -15,21 +15,43 @@ public class LobbyHub(ILobbyStore store) : Hub
 
         await Groups.AddToGroupAsync(Context.ConnectionId, lobby.Code);
         await Clients.Group(lobby.Code).SendAsync("ParticipantsChanged", NicknamesOf(lobby));
+        await Clients.Caller.SendAsync("PlaybackUpdated", lobby.Playback);
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        if (Context.Items.TryGetValue("lobbyCode", out var value)
-            && value is string code
-            && store.Get(code) is { } lobby)
+        var currentLobby = CurrentLobby();
+        if (currentLobby is not null)
         {
-            lobby.Participants.TryRemove(Context.ConnectionId, out _);
-            await Clients.Group(code).SendAsync("ParticipantsChanged", NicknamesOf(lobby));
+            currentLobby.Participants.TryRemove(Context.ConnectionId, out _);
+            await Clients.Group(currentLobby.Code).SendAsync("ParticipantsChanged", NicknamesOf(currentLobby));
         }
 
         await base.OnDisconnectedAsync(exception);
     }
+    public Task SetMedia(string type, string id) =>
+    Update(s => s with { MediaType = type, MediaId = id, IsPlaying = false, PositionSec = 0 });
 
+public Task Play(double positionSec) => Update(s => s with { IsPlaying = true, PositionSec = positionSec });
+public Task Pause(double positionSec) => Update(s => s with { IsPlaying = false, PositionSec = positionSec });
+public Task Seek(double positionSec) => Update(s => s with { PositionSec = positionSec });
+
+private async Task Update(Func<PlaybackState, PlaybackState> change)
+{
+    var lobby = CurrentLobby() ?? throw new HubException("Önce bir lobiye katıl");
+
+    PlaybackState next;
+    lock (lobby)
+    {
+        next = change(lobby.Playback) with { UpdatedAt = PlaybackState.Now() };
+        lobby.Playback = next;
+    }
+
+    await Clients.Group(lobby.Code).SendAsync("PlaybackUpdated", next);
+}
+
+private Lobby? CurrentLobby() =>
+    Context.Items.TryGetValue("lobbyCode", out var v) && v is string code ? store.Get(code) : null;
     private static string[] NicknamesOf(Lobby lobby) =>
         lobby.Participants.Values.Select(p => p.Nickname).ToArray();
 }

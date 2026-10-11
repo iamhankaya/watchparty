@@ -7,5 +7,6 @@ public class Lobby
     public required string HostClientId { get; set; }
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
     public ConcurrentDictionary<string, Participant> Participants {get;} = new ();
+    public PlaybackState Playback { get; set; } = PlaybackState.Empty;
 }
 public record Participant(string ConnectionId, string Nickname);

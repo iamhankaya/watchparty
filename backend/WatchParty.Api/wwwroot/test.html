@@ -5,17 +5,30 @@
   <input id="code" placeholder="Lobi kodu">
   <input id="nick" placeholder="Takma ad">
   <button id="join">Katıl</button>
+  <br><br>
+  <input id="pos" type="number" value="0" style="width:80px"> sn
+  <button id="play">Play</button>
+  <button id="pause">Pause</button>
+  <button id="seek">Seek</button>
+  <button id="media">Medya: dQw4w9WgXcQ</button>
   <ul id="log"></ul>
   <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@8.0.7/dist/browser/signalr.min.js"></script>
   <script>
     const $ = id => document.getElementById(id);
     const log = t => { const li = document.createElement("li"); li.textContent = t; $("log").append(li); };
+    const call = (method, ...args) => conn.invoke(method, ...args).catch(e => log("Hata: " + e.message));
+    const pos = () => Number($("pos").value);
 
     const conn = new signalR.HubConnectionBuilder().withUrl("/hubs/lobby").withAutomaticReconnect().build();
     conn.on("ParticipantsChanged", list => log("Lobidekiler: " + list.join(", ")));
+    conn.on("PlaybackUpdated", state => log("Durum: " + JSON.stringify(state)));
     conn.start().then(() => log("Bağlandı")).catch(e => log("Hata: " + e));
 
-    $("join").onclick = () =>
-      conn.invoke("JoinLobby", $("code").value, $("nick").value).catch(e => log("Hata: " + e.message));
+    $("join").onclick = () => call("JoinLobby", $("code").value, $("nick").value);
+    $("play").onclick = () => call("Play", pos());
+    $("pause").onclick = () => call("Pause", pos());
+    $("seek").onclick = () => call("Seek", pos());
+    $("media").onclick = () => call("SetMedia", "youtube", "dQw4w9WgXcQ");
   </script>
-</body></html>
+</body>
+</html>
