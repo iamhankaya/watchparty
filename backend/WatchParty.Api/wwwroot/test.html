@@ -24,6 +24,7 @@
     const conn = new signalR.HubConnectionBuilder().withUrl("/hubs/lobby").withAutomaticReconnect().build();
     conn.on("ParticipantsChanged", list => log("Lobidekiler: " + list.join(", ")));
     conn.on("ControlModeChanged", hostOnly => { $("hostOnly").checked = hostOnly; log("Kontrol modu: " + (hostOnly ? "sadece host" : "herkes")); });
+    conn.on("HostChanged", nick => log("Yeni host: " + nick));
     conn.on("PlaybackUpdated", state => log("Durum: " + JSON.stringify(state)));
     conn.start().then(() => log("Bağlandı")).catch(e => log("Hata: " + e));
 

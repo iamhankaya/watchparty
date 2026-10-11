@@ -11,6 +11,7 @@ public class LobbyHub(ILobbyStore store) : Hub
             throw new HubException("Lobi bulunamadı");
 
         lobby.Participants[Context.ConnectionId] = new Participant(Context.ConnectionId, nickname, clientId);
+        lobby.EmptySince = null;
         Context.Items["lobbyCode"] = lobby.Code;
         Context.Items["clientId"] = clientId;
         await Groups.AddToGroupAsync(Context.ConnectionId, lobby.Code);
@@ -20,16 +21,36 @@ public class LobbyHub(ILobbyStore store) : Hub
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
+{
+    var lobby = CurrentLobby();
+    if (lobby is not null)
     {
-        var currentLobby = CurrentLobby();
-        if (currentLobby is not null)
+        lobby.Participants.TryRemove(Context.ConnectionId, out var leaving);
+
+        var hostLeft = leaving is not null
+            && leaving.ClientId == lobby.HostClientId
+            && !lobby.Participants.Values.Any(p => p.ClientId == lobby.HostClientId);
+
+        if (hostLeft)
         {
-            currentLobby.Participants.TryRemove(Context.ConnectionId, out _);
-            await Clients.Group(currentLobby.Code).SendAsync("ParticipantsChanged", NicknamesOf(currentLobby));
+            var nextHost = lobby.Participants.Values.OrderBy(p => p.JoinedAt).FirstOrDefault();
+            if (nextHost is not null)
+            {
+                lobby.HostClientId = nextHost.ClientId;
+                await Clients.Group(lobby.Code).SendAsync("HostChanged", nextHost.Nickname);
+            }
         }
 
-        await base.OnDisconnectedAsync(exception);
+        await Clients.Group(lobby.Code).SendAsync("ParticipantsChanged", NicknamesOf(lobby));
+        if (lobby.Participants.IsEmpty)
+        {
+            lobby.EmptySince = DateTimeOffset.UtcNow;
+        }
     }
+
+
+    await base.OnDisconnectedAsync(exception);
+}
     public Task SetMedia(string type, string id) =>
     Update(s => s with { MediaType = type, MediaId = id, IsPlaying = false, PositionSec = 0 });
 

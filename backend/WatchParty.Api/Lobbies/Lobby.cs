@@ -9,5 +9,9 @@ public class Lobby
     public ConcurrentDictionary<string, Participant> Participants {get;} = new ();
     public PlaybackState Playback { get; set; } = PlaybackState.Empty;
     public bool HostOnlyControl { get; set; }
+    public DateTimeOffset? EmptySince { get; set; } = DateTimeOffset.UtcNow;
 }
-public record Participant(string ConnectionId, string Nickname, string ClientId);
+public record Participant(string ConnectionId, string Nickname, string ClientId)
+{
+    public DateTimeOffset JoinedAt { get; } = DateTimeOffset.UtcNow;
+}

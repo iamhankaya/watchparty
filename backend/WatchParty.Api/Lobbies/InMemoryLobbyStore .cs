@@ -28,4 +28,14 @@ public class InMemoryLobbyStore : ILobbyStore
         _lobbies.TryGetValue(code, out var lobby);
         return lobby;
     }
+    public int RemoveExpired(DateTimeOffset cutoff)
+{
+    var removed = 0;
+    foreach (var (code, lobby) in _lobbies)
+    {
+        if (lobby.EmptySince is { } since && since < cutoff && _lobbies.TryRemove(code, out _))
+            removed++;
+    }
+    return removed;
+}
 }

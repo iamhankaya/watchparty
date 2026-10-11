@@ -3,6 +3,7 @@ using WatchParty.Api.Lobbies;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<ILobbyStore, InMemoryLobbyStore>();
 builder.Services.AddSignalR();  
+builder.Services.AddHostedService<LobbyCleanupService>();
 var app = builder.Build();
 
 app.MapGet("/", () => "Hello World!");
