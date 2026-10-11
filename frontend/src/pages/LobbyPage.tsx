@@ -228,7 +228,7 @@ export function LobbyPage({ code, navigate }: Props) {
   const serverPosition = () => (playback ? expectedPosition(playback, clockRef.current.now()) : 0);
 
   const chatBox = (
-    <Chat messages={chat} myNickname={me?.nickname ?? nickname} onSend={(text) => conn?.sendChat(text).catch(showError)} />
+    <Chat messages={chat} myNickname={me?.nickname ?? nickname} onSend={(text) => conn?.sendChat(text).catch((err) => { showError(err); throw err; })} />
   );
 
   return (

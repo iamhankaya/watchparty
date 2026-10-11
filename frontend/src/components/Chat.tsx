@@ -24,7 +24,8 @@ export function Chat({ messages, myNickname, onSend }: Props) {
     const value = text.trim();
     if (!value) return;
     setText("");
-    void onSend(value);
+    // Gönderim başarısız olursa (ör. hız limiti) metni geri koy; kutuda yeni yazı varsa dokunma.
+    void Promise.resolve(onSend(value)).catch(() => setText((current) => (current === "" ? value : current)));
   }
 
   return (

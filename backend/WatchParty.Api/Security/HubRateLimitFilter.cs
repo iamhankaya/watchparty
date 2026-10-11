@@ -23,12 +23,14 @@ public class HubRateLimitFilter(ConnectionCounter counter, IOptions<SecurityOpti
 
         var items = context.Context.Items;
         items[IpKey] = ip;
-        items[ChatKey] = Bucket(o.ChatBurst, o.ChatPerSecond);
-        items[PlaybackKey] = Bucket(o.PlaybackBurst, o.PlaybackPerSecond);
-        items[OtherKey] = Bucket(o.OtherBurst, o.OtherPerSecond);
 
         try
         {
+            // Bucket oluşturma da try içinde: fırlatırsa yuva ve oluşan limiter'lar bırakılır.
+            items[ChatKey] = Bucket(o.ChatBurst, o.ChatPerSecond);
+            items[PlaybackKey] = Bucket(o.PlaybackBurst, o.PlaybackPerSecond);
+            items[OtherKey] = Bucket(o.OtherBurst, o.OtherPerSecond);
+
             await next(context);
         }
         catch

@@ -14,7 +14,7 @@ export function MediaPicker({ disabled, onSubmit }: Props) {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const media = parseMediaInput(value);
-    if (!media) return setProblem("Bu bir YouTube linki ya da http(s) video adresi gibi görünmüyor.");
+    if (!media) return setProblem("Bu bir YouTube linki ya da https:// ile başlayan bir video adresi gibi görünmüyor.");
     if (media.id.length > MAX_MEDIA_ID) return setProblem(`Adres çok uzun (en fazla ${MAX_MEDIA_ID} karakter).`);
     onSubmit(media.type, media.id);
     setValue("");

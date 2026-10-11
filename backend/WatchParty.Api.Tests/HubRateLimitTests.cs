@@ -37,7 +37,7 @@ public class HubRateLimitTests
             {
                 await connection.InvokeAsync("SendChat", $"m{i}");
             }
-            catch (HubException ex)
+            catch (HubException ex) when (ex.Message.Contains("Çok hızlı"))
             {
                 return (i, ex);
             }

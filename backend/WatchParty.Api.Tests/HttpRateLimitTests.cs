@@ -82,4 +82,19 @@ public class HttpRateLimitTests
         Assert.Equal(HttpStatusCode.Created, (await PostLobbyAsync(client, "203.0.113.1")).StatusCode);
         Assert.Equal(HttpStatusCode.TooManyRequests, (await PostLobbyAsync(client, "203.0.113.2")).StatusCode);
     }
+
+    [Fact]
+    public async Task Rightmost_forwarded_ip_is_used_for_partition()
+    {
+        using var factory = new WatchPartyFactory(new()
+        {
+            ["Security:TrustForwardedHeaders"] = "true",
+            ["Security:CreateLobbyPerMinute"] = "1",
+        });
+        using var client = factory.CreateClient();
+
+        Assert.Equal(HttpStatusCode.Created, (await PostLobbyAsync(client, "1.1.1.1, 203.0.113.9")).StatusCode);
+        // Soldaki değer istemci tarafından uydurulabilir; aynı en sağ IP aynı kovayı paylaşır.
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await PostLobbyAsync(client, "2.2.2.2, 203.0.113.9")).StatusCode);
+    }
 }
