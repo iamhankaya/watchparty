@@ -7,7 +7,9 @@ builder.Services.AddHostedService<LobbyCleanupService>();
 builder.Services.AddHostedService<LobbyTickService>();
 var app = builder.Build();
 
-app.UseStaticFiles();
+// test.html yalnızca geliştirme ortamında servis edilir
+if (app.Environment.IsDevelopment())
+    app.UseStaticFiles();
 
 app.MapGet("/api/health", () => new
 {
