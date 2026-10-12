@@ -22,6 +22,8 @@ Tarayıcıda http://localhost:5173 açılır. `/api` ve `/hubs` istekleri Vite p
 
 **Prod build:** `npm run build` → `dist/` klasörü. AWS adımında S3'e bu klasör yüklenecek.
 
+**Test:** `npm test` (vitest).
+
 ## Yapı
 
 ```
@@ -34,9 +36,12 @@ src/
     sync.ts         SyncEngine: sunucu durumunu oynatıcıya uygular
     identity.ts     localStorage'da clientId ve takma ad
     media.ts        YouTube linki / MP4 URL ayrıştırma
+    theme.ts        koyu/açık tema (localStorage, yoksa sistem tercihi)
   players/          Player arayüzü, YouTubePlayer (IFrame API), FilePlayer (<video>)
-  components/       Kontroller, medya seçici, katılımcılar, sohbet, davet kutusu
+  components/       Kontroller, medya seçici, katılımcılar, sohbet, ikonlar,
+                    LobbyStrip (kod panosu, durum, davet linki), SidePanel (Sohbet/Kişiler sekmeleri)
   pages/            HomePage, LobbyPage
+  styles.css        tek stil dosyası; renkler :root ve :root[data-theme="light"] token'larında
 ```
 
 ## Senkron nasıl çalışıyor
@@ -55,3 +60,5 @@ src/
 - Backend medya id'sini en fazla 200 karakter kabul ediyor; çok uzun (ör. imzalı) film URL'leri reddedilir.
   S3/CloudFront adımında burada URL yerine film id'si gönderilecek.
 - Prod'da S3/CloudFront'ta `/l/KOD` gibi adresler için 403/404 → `index.html` yönlendirmesi gerekecek (SPA).
+- Fontlar (Big Shoulders Display, Instrument Sans) Google Fonts'tan yüklenir. Prod CSP'sinde
+  `style-src` için `fonts.googleapis.com`, `font-src` için `fonts.gstatic.com` izinli olmalı.
