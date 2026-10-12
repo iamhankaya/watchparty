@@ -1,7 +1,7 @@
 variable "region" {
   description = "AWS bölgesi"
   type        = string
-  default     = "eu-central-1"
+  default     = "eu-north-1"
 }
 
 variable "aws_profile" {

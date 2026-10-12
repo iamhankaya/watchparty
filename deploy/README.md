@@ -1,6 +1,6 @@
 # AWS deploy runbook'u
 
-Mimari: tarayıcı → CloudFront → (varsayılan) S3 site bucket'ı; `/api/*` ve `/hubs/*` → EC2 `t4g.small` (Kestrel :80, systemd). Altyapı `infra/` altında Terraform ile, deploy script'leri bu klasörde (PowerShell). Bölge `eu-central-1`. Alan adı/ACM henüz yok; adres `*.cloudfront.net`.
+Mimari: tarayıcı → CloudFront → (varsayılan) S3 site bucket'ı; `/api/*` ve `/hubs/*` → EC2 `t4g.small` (Kestrel :80, systemd). Altyapı `infra/` altında Terraform ile, deploy script'leri bu klasörde (PowerShell). Bölge `eu-north-1` (Stockholm): hesabın bağlı olduğu organizasyonun SCP'si yalnızca bu bölgeye izin veriyor. Alan adı/ACM henüz yok; adres `*.cloudfront.net`.
 
 Tahmini maliyet ~16 $/ay (t4g.small ~12 $, public IPv4 ~3,6 $).
 
@@ -18,7 +18,7 @@ Kurulumdan sonra yeni bir terminal açın. Ayrıca .NET SDK (`global.json`) ve N
 ## 2. IAM kullanıcısı ve AWS profili
 
 1. AWS konsolunda bir IAM kullanıcısı oluşturun (şimdilik `AdministratorAccess`; dar yetkili politika kapsam dışı) ve bir access key üretin.
-2. Profili tanımlayın (bölge: `eu-central-1`):
+2. Profili tanımlayın (bölge: `eu-north-1`; deploy script'leri bölgeyi profilden alır, Terraform'daki `region` ile aynı olmalı):
    ```powershell
    aws configure --profile watchparty
    aws sts get-caller-identity --profile watchparty   # hesap kimliğini doğrular

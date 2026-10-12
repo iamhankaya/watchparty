@@ -10,7 +10,7 @@ Kaynak: 2026-10-12 deployment brainstorming'i. Hedef CLAUDE.md'de "planned, not 
 | Alan adı | Şimdilik yok; `*.cloudfront.net` adresi. Alan adı/ACM sonradan eklenecek şekilde değişkenle hazırlanır |
 | Altyapı | Terraform (`infra/`), lokal state |
 | Backend çalıştırma | systemd + framework-dependent publish, sunucuda ASP.NET Core 10 runtime |
-| Bölge / sunucu | `eu-central-1`, `t4g.small` (ARM, 2 GB), Amazon Linux 2023; publish `linux-arm64` |
+| Bölge / sunucu | `eu-north-1` (Stockholm; organizasyon SCP'si yalnızca bu bölgeye izin veriyor — ilk plan'da görüldü), `t4g.small` (ARM, 2 GB), Amazon Linux 2023; publish `linux-arm64` |
 | CloudFront → EC2 | HTTP:80; güvenlik grubu yalnızca CloudFront origin-facing prefix list; gizli `X-Origin-Verify` header'ı |
 | Ortam | Tek prod |
 | Deploy | Lokal PowerShell script'leri (`deploy/`) |

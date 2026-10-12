@@ -53,7 +53,7 @@ It asserts on substrings of the Turkish `HubException` messages (e.g. "bulunamad
 
 ## Deployment
 
-AWS, eu-central-1: `dist/` on S3 behind CloudFront; `/api/*` and `/hubs/*` go to a single EC2 `t4g.small` (Kestrel :80 under systemd, framework-dependent `linux-arm64` publish), hence no CORS config. No domain/ACM yet (`*.cloudfront.net`). Full runbook (setup, first deploy, rollback, logs): `deploy/README.md`.
+AWS, eu-north-1 (the account's organization SCP allows only this region): `dist/` on S3 behind CloudFront; `/api/*` and `/hubs/*` go to a single EC2 `t4g.small` (Kestrel :80 under systemd, framework-dependent `linux-arm64` publish), hence no CORS config. No domain/ACM yet (`*.cloudfront.net`). Full runbook (setup, first deploy, rollback, logs): `deploy/README.md`.
 
 - `infra/`: Terraform (local state, which is sensitive: it holds the origin secret — back it up, never commit), `spa-rewrite.js` (CloudFront Function), `user_data.sh.tftpl` (server bootstrap). `node --test "infra/tests/*.test.mjs"` tests the rewrite function (quote the glob; the bare directory form fails on Node 22).
 - `deploy/`: PowerShell scripts that read `terraform -chdir=infra output -json`. `deploy\deploy-backend.ps1 [-Profile watchparty] [-Rollback]` (tests, publish, S3, SSM; auto-reverts on failed health check), `deploy\deploy-frontend.ps1 [-Profile watchparty] [-DryRun]`. Backend first, then frontend. `deploy/watchparty.service` is the systemd unit; server config lives in `/etc/watchparty/watchparty.env`.
