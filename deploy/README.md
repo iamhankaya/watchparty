@@ -28,6 +28,15 @@ Terraform ve script'ler varsayılan olarak `watchparty` profilini kullanır (`aw
 
 ## 3. Altyapıyı kurma
 
+Terraform state'i S3'te durur (`infra/versions.tf` → `backend "s3"`, bucket `watchparty-tfstate-8b2f65c1`, kilit `use_lockfile`). Bu bucket mevcut; yalnızca **sıfırdan yeni bir hesapta** kurulum yapılıyorsa önce elle oluşturulmalı (Terraform kendi state bucket'ını yönetemez) ve adı `versions.tf`'te güncellenmeli:
+
+```powershell
+$b = "watchparty-tfstate-<rastgele-ek>"
+aws s3api create-bucket --bucket $b --create-bucket-configuration LocationConstraint=eu-north-1 --profile watchparty
+aws s3api put-public-access-block --bucket $b --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true --profile watchparty
+aws s3api put-bucket-versioning --bucket $b --versioning-configuration Status=Enabled --profile watchparty
+```
+
 ```powershell
 terraform -chdir=infra init
 terraform -chdir=infra apply
@@ -125,8 +134,8 @@ EIP ve origin secret aynı kalır; bellekteki lobiler kaybolur, ardından backen
 terraform -chdir=infra destroy
 ```
 
-Bucket'larda `force_destroy = true` olduğundan içerikleriyle birlikte silinir.
+Bucket'larda `force_destroy = true` olduğundan içerikleriyle birlikte silinir. State bucket'ı (`watchparty-tfstate-*`) Terraform'un dışında olduğu için `destroy` ile silinmez; artık gerekmiyorsa elle silin (versioning açık, önce tüm sürümleri silmek gerekir).
 
 ## Terraform state'i hassastır
 
-State lokaldir (`infra/terraform.tfstate`, gitignore'da) ve düz metin **origin secret**'ı (`X-Origin-Verify`) içerir. Repoya girmemeli, paylaşılmamalı ve güvenli bir yere yedeklenmelidir; kaybedilirse Terraform mevcut kaynakları yönetemez. `*.tfvars` ve `infra/.terraform/` de repoya girmez; `infra/.terraform.lock.hcl` girer.
+State S3'tedir (`s3://watchparty-tfstate-8b2f65c1/watchparty/terraform.tfstate`): versioning açık (eski sürümler geri getirilebilir), sunucu tarafı şifreli, public erişim kapalı ve yalnızca HTTPS kabul edilir. Aynı anda iki `apply` çalışmasını S3 kilidi engeller. State düz metin **origin secret**'ı (`X-Origin-Verify`) içerdiğinden bu bucket'a erişim yetkisi olan herkes secret'ı okuyabilir; lokale indirilmemeli, paylaşılmamalı. `*.tfstate`, `*.tfvars` ve `infra/.terraform/` repoya girmez; `infra/.terraform.lock.hcl` girer.
