@@ -25,10 +25,10 @@ if ($Rollback) {
         & dotnet publish (Join-Path $repo "backend/WatchParty.Api") -c Release -r linux-arm64 --self-contained false -o $tmp
         if ($LASTEXITCODE -ne 0) { throw "dotnet publish başarısız" }
 
-        # Compress-Archive PS 5.1'de '\' yazar ve Linux'ta unzip bozuk açar; ZipFile '/' yazar.
-        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        # PS 5.1'de hem Compress-Archive hem ZipFile.CreateFromDirectory girdi adlarına '\' yazar ve
+        # Linux'ta unzip paketi açamaz; bu yüzden girdiler '/' ayırıcıyla tek tek eklenir.
         if (Test-Path $zip) { Remove-Item $zip -Force }
-        [System.IO.Compression.ZipFile]::CreateFromDirectory($tmp, $zip)
+        New-ZipWithForwardSlashes -SourceDir $tmp -ZipPath $zip
 
         $s3Uri = "s3://$($outputs.deploy_bucket)/backend/$release.zip"
         Write-Host "Yükleniyor: $s3Uri"

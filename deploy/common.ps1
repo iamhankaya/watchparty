@@ -4,6 +4,9 @@ $ErrorActionPreference = "Stop"
 
 $script:RepoRoot = Split-Path -Parent $PSScriptRoot
 
+# Windows'ta aws CLI çıktıyı sistem kod sayfasıyla (ör. cp1254) yazar; Türkçe karakterler bozulmasın diye UTF-8'e zorlanır.
+$env:AWS_CLI_OUTPUT_ENCODING = "UTF-8"
+
 # terraform output -json çıktısını düz bir nesneye çevirir: $o.cloudfront_domain, $o.instance_id vb.
 function Get-InfraOutputs {
     $infra = Join-Path $script:RepoRoot "infra"
@@ -31,6 +34,23 @@ function Get-InfraOutputs {
     return [pscustomobject]$flat
 }
 
+# Klasörü, girdi adlarında '/' ayırıcı kullanan bir zip'e paketler (Linux'taki unzip için).
+function New-ZipWithForwardSlashes([string]$SourceDir, [string]$ZipPath) {
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    # GetFiles yolları verilen kökle aynı biçimde döndürür (Get-ChildItem kısa adı METOHA~1 gibi uzun ada çevirebilir).
+    $root = [System.IO.Path]::GetFullPath($SourceDir).TrimEnd('\') + '\'
+    $archive = [System.IO.Compression.ZipFile]::Open($ZipPath, [System.IO.Compression.ZipArchiveMode]::Create)
+    try {
+        foreach ($path in [System.IO.Directory]::GetFiles($root, "*", [System.IO.SearchOption]::AllDirectories)) {
+            $entryName = $path.Substring($root.Length).Replace('\', '/')
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $path, $entryName) | Out-Null
+        }
+    } finally {
+        $archive.Dispose()
+    }
+}
+
 # aws CLI'yi seçili profille çalıştırır; çıkış kodu sıfır değilse hata fırlatır.
 # $script:DryRun açıksa komutu çalıştırmaz, yalnızca yazdırır.
 function Invoke-Aws {
@@ -39,7 +59,14 @@ function Invoke-Aws {
         Write-Host ("[DryRun] aws " + ($awsArgs -join " "))
         return
     }
-    $out = & aws @awsArgs
+    # PowerShell yerel komut çıktısını [Console]::OutputEncoding ile okur; aws artık UTF-8 yazıyor.
+    $prevEncoding = [Console]::OutputEncoding
+    [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+    try {
+        $out = & aws @awsArgs
+    } finally {
+        [Console]::OutputEncoding = $prevEncoding
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "aws komutu başarısız oldu (çıkış kodu $LASTEXITCODE): aws $($args -join ' ')"
     }
