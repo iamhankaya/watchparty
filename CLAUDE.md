@@ -62,3 +62,17 @@ AWS, eu-north-1 (the account's organization SCP allows only this region): `dist/
 - `Security:TrustForwardedHeaders=true` (env `Security__TrustForwardedHeaders`) is set on the server so limits see the real client IP (rightmost `X-Forwarded-For`, `ForwardLimit = 1`). Safe only because the origin is reachable solely from CloudFront; if another proxy (e.g. an ALB) is added, raise `ForwardLimit` in `Program.cs`.
 - `AllowedHosts` must be the **origin DNS name** (the Elastic IP's public DNS), not the CloudFront domain: `AllViewerExceptHostHeader` makes CloudFront send the origin name as Host. A wrong value returns 400 for everything. Default is `*`.
 - `backend/e2e/smoke.mjs` (`npm run smoke` in `backend/e2e`, `BASE_URL` = CloudFront URL, `ORIGIN_URL` = origin) is the live check. Never run `e2e.mjs` against prod (hits production rate limits).
+
+## Video downloader (`tools/downloader`)
+
+Python CLI (`indir.py`, details in its `README.md`): downloads a video with yt-dlp, makes a web-ready MP4 with ffmpeg (H.264 + AAC + faststart; copies without re-encoding when the source already is), optionally uploads to S3 and prints the `https://` link to paste into a lobby (max 200 chars, like `MediaValidator`).
+```powershell
+cd tools\downloader; .venv\Scripts\Activate.ps1      # venv + deps: pip install -r requirements.txt
+python indir.py <url> --sadece-indir                  # download only -> indirilenler\ (gitignored)
+python -m unittest                                    # unit tests (pure functions only)
+$env:AWS_PROFILE="watchparty"; python indir.py --dosya indirilenler\x.mp4 --gizli --s3-bucket watchparty-site-b554977f --bolge eu-north-1 --cdn-url https://dp5rr1tulngd4.cloudfront.net
+```
+- Needs ffmpeg/ffprobe on PATH (winget `Gyan.FFmpeg`; a shell started before the install doesn't see it) and Node or Deno for YouTube (`yt-dlp[default]`, `js_runtimes`).
+- Uploads currently go to the **site bucket** under `videolar/` (served via CloudFront; the SPA rewrite skips paths with a dot, CSP has `media-src https:`, `deploy-frontend.ps1` never deletes). A separate video bucket is in `docs/BACKLOG.md`. Bucket/domain come from `terraform -chdir=infra output`.
+- `--gizli` puts the file under a random 32-hex folder so the link can't be guessed (the bucket is private, OAC, not listable); use it for anything private and delete the object (plus a CloudFront invalidation, objects are cached `immutable`) after watching.
+- `.claude/settings.local.json` (gitignored) allows `indir.py` runs; run them from `tools/downloader` as `.venv/Scripts/python indir.py ...` so the rule matches.
