@@ -18,6 +18,9 @@ builder.Services.AddHostedService<LobbyCleanupService>();
 builder.Services.AddHostedService<LobbyTickService>();
 var app = builder.Build();
 
+// En başta çalışır: karar, forwarded header'lar uzak adresi değiştirmeden ve rate limiter'dan önce verilir.
+app.UseOriginVerification();
+
 // Ayar Build() sonrası okunur; test/ortam yapılandırması da böylece görünür.
 if (app.Services.GetRequiredService<IOptions<SecurityOptions>>().Value.TrustForwardedHeaders)
 {
