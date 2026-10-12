@@ -1,5 +1,4 @@
 import { MAX_PARTICIPANTS, type Participant } from "../lib/types";
-import { useAppearance } from "../lib/appearance";
 import { Icon } from "./Icon";
 
 // Takma addan sabit bir renk seçer; aynı kişi her ekranda aynı renkte görünür.
@@ -15,7 +14,6 @@ interface Props {
 }
 
 export function Participants({ participants, selfId }: Props) {
-  const { design } = useAppearance();
   return (
     <div className="card">
       <h3>
@@ -29,7 +27,7 @@ export function Participants({ participants, selfId }: Props) {
             {p.id === selfId && <span className="muted small">(sen)</span>}
             {p.isHost && (
               <span className="host" title="Host">
-                {design === "cinema" ? <Icon name="crown" /> : "👑"}
+                <Icon name="crown" />
               </span>
             )}
           </li>

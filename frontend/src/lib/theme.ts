@@ -1,13 +1,10 @@
 import { useSyncExternalStore } from "react";
 
-// Görünüm ayarları: tema (koyu/açık) ve tasarım (klasik/sinema). İkisi de <html> üzerindeki
-// data-theme / data-design attribute'larıyla CSS'e yansır. İlk değerler index.html'deki inline
-// script tarafından sayfa çizilmeden önce yazılır; burası sonraki değişiklikleri yönetir.
+// Tema (koyu/açık) <html data-theme> ile CSS'e yansır. İlk değer index.html'deki inline script
+// tarafından sayfa çizilmeden önce yazılır; burası sonraki değişiklikleri yönetir.
 export type Theme = "dark" | "light";
-export type Design = "classic" | "cinema";
 
 const THEME_KEY = "wp:theme";
-const DESIGN_KEY = "wp:design";
 
 function read(key: string): string | null {
   try {
@@ -26,7 +23,6 @@ function write(key: string, value: string) {
 }
 
 const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
-const root = document.documentElement;
 const listeners = new Set<() => void>();
 
 function storedTheme(): Theme | null {
@@ -38,16 +34,11 @@ function currentTheme(): Theme {
   return storedTheme() ?? (systemDark.matches ? "dark" : "light");
 }
 
-function currentDesign(): Design {
-  return read(DESIGN_KEY) === "cinema" ? "cinema" : "classic";
-}
-
-let snapshot = { theme: currentTheme(), design: currentDesign() };
+let theme = currentTheme();
 
 function apply() {
-  snapshot = { theme: currentTheme(), design: currentDesign() };
-  root.dataset.theme = snapshot.theme;
-  root.dataset.design = snapshot.design;
+  theme = currentTheme();
+  document.documentElement.dataset.theme = theme;
   listeners.forEach((l) => l());
 }
 
@@ -57,12 +48,7 @@ systemDark.addEventListener("change", () => {
 });
 
 export function toggleTheme() {
-  write(THEME_KEY, snapshot.theme === "dark" ? "light" : "dark");
-  apply();
-}
-
-export function setDesign(design: Design) {
-  write(DESIGN_KEY, design);
+  write(THEME_KEY, theme === "dark" ? "light" : "dark");
   apply();
 }
 
@@ -71,6 +57,6 @@ function subscribe(l: () => void) {
   return () => listeners.delete(l);
 }
 
-export function useAppearance() {
-  return useSyncExternalStore(subscribe, () => snapshot);
+export function useTheme(): Theme {
+  return useSyncExternalStore(subscribe, () => theme);
 }

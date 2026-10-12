@@ -18,12 +18,10 @@ import { PlayerArea } from "../components/PlayerArea";
 import { Controls } from "../components/Controls";
 import { MediaPicker } from "../components/MediaPicker";
 import { Participants } from "../components/Participants";
-import { ShareBox } from "../components/ShareBox";
 import { Chat } from "../components/Chat";
-import { LobbyStrip } from "../components/cinema/LobbyStrip";
-import { SidePanel } from "../components/cinema/SidePanel";
-import { CodeBoard } from "../components/cinema/CodeBoard";
-import { useAppearance } from "../lib/appearance";
+import { LobbyStrip } from "../components/LobbyStrip";
+import { SidePanel } from "../components/SidePanel";
+import { CodeBoard } from "../components/CodeBoard";
 
 interface Props {
   code: string;
@@ -49,7 +47,6 @@ export function LobbyPage({ code, navigate }: Props) {
   const [volume, setVolume] = useState<VolumeSetting>(getVolume);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [chatOpen, setChatOpen] = useState(true);
-  const { design } = useAppearance();
 
   const connRef = useRef<LobbyConnection | null>(null);
   const clockRef = useRef(new ServerClock());
@@ -211,14 +208,8 @@ export function LobbyPage({ code, navigate }: Props) {
     return (
       <main className="center">
         <form className="card narrow" onSubmit={handleNicknameSubmit}>
-          {design === "cinema" ? (
-            <>
-              <CodeBoard code={code} />
-              <h2>Bu lobiye katıl</h2>
-            </>
-          ) : (
-            <h2>Lobi {code}</h2>
-          )}
+          <CodeBoard code={code} />
+          <h2>Bu lobiye katıl</h2>
           <label className="field">
             <span>Takma ad</span>
             <input value={nickname} onChange={(e) => setNickname(e.target.value)} maxLength={MAX_NICKNAME} autoFocus placeholder="ör. Ayşe" />
@@ -298,44 +289,25 @@ export function LobbyPage({ code, navigate }: Props) {
     </div>
   );
 
-  if (design === "cinema") {
-    return (
-      <main className="cn-lobby">
-        <LobbyStrip code={code} status={status} participants={participants} />
-        <section className="stage">
-          {theater}
-          {mediaPicker}
-          {hostOnlyNote}
-        </section>
-        <SidePanel
-          chat={isFullscreen ? <p className="muted small cn-pane-note">Sohbet tam ekranda açık.</p> : chatBox}
-          people={
-            <>
-              <Participants participants={participants} selfId={selfId} />
-              {hostSettings}
-            </>
-          }
-          peopleCount={participants.length}
-          messageCount={chat.length}
-        />
-      </main>
-    );
-  }
-
   return (
-    <main className="lobby">
+    <main className="cn-lobby">
+      <LobbyStrip code={code} status={status} participants={participants} />
       <section className="stage">
         {theater}
         {mediaPicker}
         {hostOnlyNote}
       </section>
-
-      <aside className="sidebar">
-        <ShareBox code={code} status={status} />
-        <Participants participants={participants} selfId={selfId} />
-        {hostSettings}
-        {!isFullscreen && chatBox}
-      </aside>
+      <SidePanel
+        chat={isFullscreen ? <p className="muted small cn-pane-note">Sohbet tam ekranda açık.</p> : chatBox}
+        people={
+          <>
+            <Participants participants={participants} selfId={selfId} />
+            {hostSettings}
+          </>
+        }
+        peopleCount={participants.length}
+        messageCount={chat.length}
+      />
     </main>
   );
 }

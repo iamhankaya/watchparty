@@ -1,8 +1,34 @@
-import type { ConnectionStatus, Participant } from "../../lib/types";
-import { STATUS_TEXT, useCopy } from "../ShareBox";
-import { avatarTone } from "../Participants";
-import { Icon } from "../Icon";
+import { useState } from "react";
+import type { ConnectionStatus, Participant } from "../lib/types";
+import { avatarTone } from "./Participants";
+import { Icon } from "./Icon";
 import { CodeBoard } from "./CodeBoard";
+
+const STATUS_TEXT: Record<ConnectionStatus, string> = {
+  connecting: "Bağlanıyor",
+  connected: "Bağlı",
+  reconnecting: "Yeniden bağlanıyor",
+  disconnected: "Bağlantı koptu",
+};
+
+// Lobi kodunu ya da linkini panoya kopyalar; "copied" kısa süre son kopyalananı gösterir.
+function useCopy(code: string) {
+  const [copied, setCopied] = useState<"code" | "link" | null>(null);
+  const link = `${window.location.origin}/l/${code}`;
+
+  async function copy(what: "code" | "link") {
+    const text = what === "code" ? code : link;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(what);
+      setTimeout(() => setCopied(null), 1500);
+    } catch {
+      window.prompt("Kopyala:", text);
+    }
+  }
+
+  return { copied, copy };
+}
 
 interface Props {
   code: string;

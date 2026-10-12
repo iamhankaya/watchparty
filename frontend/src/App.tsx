@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { HomePage } from "./pages/HomePage";
 import { LobbyPage } from "./pages/LobbyPage";
 import { USE_MOCK } from "./lib/api";
-import { setDesign, toggleTheme, useAppearance } from "./lib/appearance";
+import { toggleTheme, useTheme } from "./lib/theme";
 import { Icon } from "./components/Icon";
 
 // İki sayfa için router kütüphanesi gereksiz: "/" ana sayfa, "/l/KOD" lobi.
@@ -13,7 +13,7 @@ function lobbyCodeFromPath(path: string): string | null {
 
 export function App() {
   const [path, setPath] = useState(window.location.pathname);
-  const { theme, design } = useAppearance();
+  const theme = useTheme();
 
   useEffect(() => {
     const onPop = () => setPath(window.location.pathname);
@@ -39,19 +39,10 @@ export function App() {
             navigate("/");
           }}
         >
-          {design === "cinema" ? "WatchParty" : "🎬 WatchParty"}
+          WatchParty
         </a>
         {USE_MOCK && <span className="badge">mock sunucu</span>}
-        <div className="appearance">
-          {/* Geçici: iki tasarım kıyaslanırken kullanılır, seçimden sonra kaldırılacak. */}
-          <div className="design-switch" role="group" aria-label="Tasarım">
-            <button aria-pressed={design === "classic"} onClick={() => setDesign("classic")}>
-              Klasik
-            </button>
-            <button aria-pressed={design === "cinema"} onClick={() => setDesign("cinema")}>
-              Sinema
-            </button>
-          </div>
+        <div className="topbar-end">
           <button
             className="theme-toggle"
             onClick={toggleTheme}
