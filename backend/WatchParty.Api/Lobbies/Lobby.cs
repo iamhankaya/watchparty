@@ -9,16 +9,24 @@ public class Lobby
     public const int MaxParticipants = 20;
     public const int MaxChatHistory = 50;
 
-    public required string Code { get; init; }
-    public required string HostClientId { get; set; }
-    public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
+    public Lobby(string code, string hostClientId, bool hostOnlyControl = false)
+    {
+        Code = code;
+        HostClientId = hostClientId;
+        HostOnlyControl = hostOnlyControl;
+        EmptySince = CreatedAt;
+    }
+
+    public string Code { get; }
+    public string HostClientId { get; private set; }
+    public DateTimeOffset CreatedAt { get; } = DateTimeOffset.UtcNow;
     public ConcurrentDictionary<string, Participant> Participants { get; } = new();
     public PlaybackState Playback { get; set; } = PlaybackState.Empty;
     public bool HostOnlyControl { get; set; }
-    public DateTimeOffset? EmptySince { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? EmptySince { get; private set; }
 
     // Host'un bağlantısı koptuğu an. Kısa bir süre içinde geri dönmezse hostluk devredilir.
-    public DateTimeOffset? HostAwaySince { get; set; }
+    public DateTimeOffset? HostAwaySince { get; private set; }
 
     // Katılma/ayrılma, host devri, kapanma ve oynatma durumu değişiklikleri bu kilit altında yapılır.
     public Lock Gate { get; } = new();
@@ -87,7 +95,7 @@ public class Lobby
                 return null;
             }
 
-            var nextHost = Participants.Values.OrderBy(p => p.JoinedAt).FirstOrDefault();
+            var nextHost = Participants.Values.OrderBy(p => p.JoinedAt).ThenBy(p => p.ConnectionId, StringComparer.Ordinal).FirstOrDefault();
             if (nextHost is null)
                 return null;
 
@@ -119,7 +127,7 @@ public class Lobby
 
 public record Participant(string ConnectionId, string Nickname, string ClientId)
 {
-    public DateTimeOffset JoinedAt { get; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset JoinedAt { get; init; } = DateTimeOffset.UtcNow;
 }
 
 public record ChatMessage(string Nickname, string Text, long SentAt);

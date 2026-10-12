@@ -1,11 +1,10 @@
-using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
 
 namespace WatchParty.Api.Security;
 
 // Hub çağrılarını bağlantı başına token bucket ile, bağlantıları IP başına sayaçla sınırlar.
-public class HubRateLimitFilter(ConnectionCounter counter, IOptions<SecurityOptions> options) : IHubFilter
+public class HubRateLimitFilter(ConnectionCounter counter, IOptions<SecurityOptions> options, TimeProvider time) : IHubFilter
 {
     private const string IpKey = "rl:ip";
     private const string ChatKey = "rl:chat";
@@ -26,7 +25,7 @@ public class HubRateLimitFilter(ConnectionCounter counter, IOptions<SecurityOpti
 
         try
         {
-            // Bucket oluşturma da try içinde: fırlatırsa yuva ve oluşan limiter'lar bırakılır.
+            // Bucket oluşturma da try içinde: fırlatırsa yuva bırakılır.
             items[ChatKey] = Bucket(o.ChatBurst, o.ChatPerSecond);
             items[PlaybackKey] = Bucket(o.PlaybackBurst, o.PlaybackPerSecond);
             items[OtherKey] = Bucket(o.OtherBurst, o.OtherPerSecond);
@@ -48,9 +47,11 @@ public class HubRateLimitFilter(ConnectionCounter counter, IOptions<SecurityOpti
             : PlaybackMethods.Contains(name) ? PlaybackKey
             : OtherKey;
 
-        if (invocationContext.Context.Items.TryGetValue(key, out var value)
-            && value is TokenBucketRateLimiter limiter
-            && !limiter.AttemptAcquire(1).IsAcquired)
+        // Bucket yoksa kapalı başarısız ol: sınırsız çağrıya izin verme.
+        if (!invocationContext.Context.Items.TryGetValue(key, out var value) || value is not TokenBucket bucket)
+            throw new HubException("Bağlantı hazır değil, sayfayı yenile");
+
+        if (!bucket.TryTake())
             throw new HubException("Çok hızlı istek gönderiyorsun, biraz bekle");
 
         return await next(invocationContext);
@@ -69,16 +70,9 @@ public class HubRateLimitFilter(ConnectionCounter counter, IOptions<SecurityOpti
         }
     }
 
-    private static TokenBucketRateLimiter Bucket(int burst, int perSecond) => new(new TokenBucketRateLimiterOptions
-    {
-        TokenLimit = burst,
-        TokensPerPeriod = perSecond,
-        ReplenishmentPeriod = TimeSpan.FromSeconds(1),
-        QueueLimit = 0,
-        AutoReplenishment = true,
-    });
+    private TokenBucket Bucket(int burst, int perSecond) => new(burst, perSecond, time);
 
-    // Bağlantı reddedildiyse ya da kapandıysa yuva ve limiter'lar bırakılır; tekrar çağrılsa da zararsız.
+    // Bağlantı reddedildiyse ya da kapandıysa yuva bırakılır; tekrar çağrılsa da zararsız.
     private void Cleanup(HubCallerContext context)
     {
         var items = context.Items;
@@ -89,12 +83,6 @@ public class HubRateLimitFilter(ConnectionCounter counter, IOptions<SecurityOpti
         }
 
         foreach (var key in (string[])[ChatKey, PlaybackKey, OtherKey])
-        {
-            if (items.TryGetValue(key, out var limiter))
-            {
-                items.Remove(key);
-                (limiter as IDisposable)?.Dispose();
-            }
-        }
+            items.Remove(key);
     }
 }

@@ -6,7 +6,7 @@ public class LobbyTests
 {
     private static Participant P(string conn, string client) => new(conn, conn, client);
 
-    private static Lobby NewLobby() => new() { Code = "TEST22", HostClientId = "host" };
+    private static Lobby NewLobby() => new("TEST22", "host");
 
     [Fact]
     public void TryJoin_returns_Full_at_MaxParticipants()
@@ -94,18 +94,53 @@ public class LobbyTests
     [Fact]
     public void TryTransferHost_picks_oldest_after_grace()
     {
+        var t0 = DateTimeOffset.UtcNow;
         var lobby = NewLobby();
         lobby.TryJoin(P("h1", "host"));
-        var a = P("a1", "a");
+        var a = P("a1", "a") with { JoinedAt = t0 };
         lobby.TryJoin(a);
-        lobby.TryJoin(P("b1", "b"));
+        lobby.TryJoin(P("b1", "b") with { JoinedAt = t0.AddSeconds(1) });
         lobby.Leave("h1");
 
-        var next = lobby.TryTransferHost(DateTimeOffset.UtcNow.AddSeconds(11), TimeSpan.FromSeconds(10));
+        var next = lobby.TryTransferHost(t0.AddSeconds(11), TimeSpan.FromSeconds(10));
 
         Assert.Equal(a, next);
         Assert.Equal(a.ClientId, lobby.HostClientId);
         Assert.Null(lobby.HostAwaySince);
+    }
+
+    [Fact]
+    public void TryTransferHost_orders_by_JoinedAt_not_insertion()
+    {
+        var t0 = DateTimeOffset.UtcNow;
+        var lobby = NewLobby();
+        lobby.TryJoin(P("h1", "host"));
+        lobby.TryJoin(P("b", "cb") with { JoinedAt = t0.AddSeconds(1) });
+        var a = P("a", "ca") with { JoinedAt = t0 };
+        lobby.TryJoin(a);
+        lobby.Leave("h1");
+
+        var next = lobby.TryTransferHost(t0.AddSeconds(11), TimeSpan.FromSeconds(10));
+
+        Assert.Equal(a, next);
+        Assert.Equal("ca", lobby.HostClientId);
+    }
+
+    [Fact]
+    public void TryTransferHost_eşit_JoinedAt_için_ConnectionId_ile_deterministik_seçer()
+    {
+        var t0 = DateTimeOffset.UtcNow;
+        var lobby = NewLobby();
+        lobby.TryJoin(P("h1", "host"));
+        lobby.TryJoin(P("b", "cb") with { JoinedAt = t0 });
+        var a = P("a", "ca") with { JoinedAt = t0 };
+        lobby.TryJoin(a);
+        lobby.Leave("h1");
+
+        var next = lobby.TryTransferHost(t0.AddSeconds(11), TimeSpan.FromSeconds(10));
+
+        Assert.Equal(a, next);
+        Assert.Equal("ca", lobby.HostClientId);
     }
 
     [Fact]

@@ -236,7 +236,6 @@ button.cn-board:hover:not(:disabled) { box-shadow: inset 0 0 0 1px var(--bulb), 
 .cn-status-connected::before { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
 .cn-status-connecting::before, .cn-status-reconnecting::before { background: var(--warn); }
 .cn-status-disconnected::before { background: var(--danger); }
-.cn-link-btn { padding: 4px 12px; font-size: 0.85rem; }
 
 .cn-faces { list-style: none; margin: 0 0 0 auto; padding: 0 0 0 8px; display: flex; }
 .cn-face {
@@ -327,3 +326,9 @@ button.cn-board:hover:not(:disabled) { box-shadow: inset 0 0 0 1px var(--bulb), 
 .theater.is-fullscreen { gap: 12px; padding: 12px; background: var(--bg); }
 .toast { background: var(--surface-2); border: 1px solid var(--line); border-left: 4px solid var(--danger); color: var(--text); padding: 12px 18px; border-radius: 10px; box-shadow: 0 12px 40px var(--shadow); }
 .toast-info { border-left-color: var(--primary); }
+
+/* Bağlantı koptuğunda sahnenin üstünde çıkan uyarı */
+.lost-banner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border-color: var(--danger); border-left: 4px solid var(--danger); padding: 14px 16px; }
+.lost-banner p { margin: 0; flex: 1; min-width: 200px; }
+.lost-banner button.full { width: auto; margin-top: 0; padding: 8px 16px; }
+.lost-banner button.full:first-of-type { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }

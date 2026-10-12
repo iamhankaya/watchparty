@@ -10,12 +10,7 @@ public class InMemoryLobbyStore : ILobbyStore
     {
         while (true)
         {
-            var lobby = new Lobby
-            {
-                Code = LobbyCodeGenerator.Generate(),
-                HostClientId = hostClientId,
-                HostOnlyControl = hostOnlyControl
-            };
+            var lobby = new Lobby(LobbyCodeGenerator.Generate(), hostClientId, hostOnlyControl);
 
             if (_lobbies.TryAdd(lobby.Code, lobby))
                 return lobby;

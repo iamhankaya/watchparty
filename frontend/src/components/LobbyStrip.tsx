@@ -48,11 +48,6 @@ export function LobbyStrip({ code, status, participants }: Props) {
       <CodeBoard code={code} onClick={() => copy("code")} title={copied === "code" ? "Kopyalandı" : "Kodu kopyala"} />
       <div className="cn-strip-info">
         <span className={`cn-status cn-status-${status}`}>{copied === "code" ? "Kod kopyalandı" : STATUS_TEXT[status]}</span>
-        {status === "disconnected" && (
-          <button className="cn-link-btn" onClick={() => window.location.reload()}>
-            Yeniden bağlan
-          </button>
-        )}
       </div>
       <ul className="cn-faces" aria-label={`${participants.length} kişi izliyor`}>
         {shown.map((p) => (
