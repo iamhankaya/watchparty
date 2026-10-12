@@ -164,16 +164,22 @@ class YuklemeIlerlemesi:
 def yukle(yol: Path, bucket: str, key: str, bolge: str | None) -> str:
     """Dosyayı S3'e yükler; bucket'ın bölgesini döner."""
     import boto3
+    from boto3.s3.transfer import TransferConfig
+    from botocore.config import Config
     from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 
+    # Ev bağlantılarında uzun yüklemeler arada kopabiliyor: parça başına daha çok deneme,
+    # yavaş hatta zaman aşımına düşmemek için daha az paralel bağlantı.
+    ayar = Config(retries={"total_max_attempts": 10, "mode": "standard"})
+    aktarim = TransferConfig(max_concurrency=4, multipart_chunksize=16 * 1024 * 1024)
     try:
-        istemci = boto3.client("s3", region_name=bolge) if bolge else boto3.client("s3")
+        istemci = boto3.client("s3", region_name=bolge, config=ayar)
         if not bolge:
             bolge = istemci.get_bucket_location(Bucket=bucket).get("LocationConstraint") or "us-east-1"
         istemci.upload_file(
             str(yol), bucket, key,
             ExtraArgs={"ContentType": "video/mp4", "CacheControl": "public, max-age=31536000, immutable"},
-            Callback=YuklemeIlerlemesi(yol.stat().st_size))
+            Callback=YuklemeIlerlemesi(yol.stat().st_size), Config=aktarim)
         print()
     except NoCredentialsError as e:
         raise AracHatasi("AWS kimlik bilgisi bulunamadı. 'aws configure' çalıştırın ya da AWS_PROFILE ayarlayın.") from e
