@@ -1,0 +1,4 @@
+# Sunucuda çalışan dosyalar LF olmalı
+*.sh text eol=lf
+*.service text eol=lf
+*.tftpl text eol=lf

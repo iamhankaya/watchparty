@@ -1,0 +1,38 @@
+#!/bin/bash
+# İlk açılış kurulumu (Terraform templatefile). Servis burada başlatılmaz;
+# ilk sürüm deploy script'iyle yüklenince başlar.
+set -euo pipefail
+
+dnf install -y libicu unzip
+
+# ASP.NET Core 10 runtime (framework-dependent publish için).
+curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+chmod +x /tmp/dotnet-install.sh
+/tmp/dotnet-install.sh --runtime aspnetcore --channel 10.0 --install-dir /usr/share/dotnet
+rm -f /tmp/dotnet-install.sh
+
+id -u watchparty >/dev/null 2>&1 || useradd --system --no-create-home --shell /sbin/nologin watchparty
+
+mkdir -p /opt/watchparty/releases
+chown -R watchparty:watchparty /opt/watchparty
+
+# Prod ayarları; gizli değer içerdiği için yalnızca root okur.
+install -d -m 755 /etc/watchparty
+umask 077
+cat > /etc/watchparty/watchparty.env <<'ENVEOF'
+ASPNETCORE_ENVIRONMENT=Production
+ASPNETCORE_URLS=http://0.0.0.0:80
+Security__TrustForwardedHeaders=true
+Security__OriginSecret=${origin_secret}
+AllowedHosts=${origin_domain};localhost
+ENVEOF
+chown root:root /etc/watchparty/watchparty.env
+chmod 600 /etc/watchparty/watchparty.env
+umask 022
+
+cat > /etc/systemd/system/watchparty.service <<'UNITEOF'
+${service_unit}
+UNITEOF
+
+systemctl daemon-reload
+systemctl enable watchparty

@@ -1,0 +1,22 @@
+[Unit]
+Description=WatchParty backend (ASP.NET Core)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=watchparty
+# Root olmadan :80'e bağlanabilmek için.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+EnvironmentFile=/etc/watchparty/watchparty.env
+WorkingDirectory=/opt/watchparty/current
+ExecStart=/usr/share/dotnet/dotnet WatchParty.Api.dll
+Restart=always
+RestartSec=5
+# Loglar journald'a: journalctl -u watchparty
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=watchparty
+
+[Install]
+WantedBy=multi-user.target
