@@ -105,6 +105,21 @@ deploy\deploy-backend.ps1 -Rollback   # yeni paket yüklemeden current'ı bir ö
 
 Frontend için rollback script'i yok; önceki commit'e geçip (git checkout) `deploy-frontend.ps1`'i yeniden çalıştırın (eski asset'ler bucket'ta kaldığı için açık sayfalar bozulmaz).
 
+## İzleme ve alarmlar
+
+`infra/monitoring.tf` kurar; bildirimler SNS üzerinden `infra/terraform.tfvars` içindeki `alert_email` adresine gider (dosya gitignore'da; yeni makinede `alert_email = "..."` satırıyla oluşturun). AWS'nin gönderdiği abonelik onay e-postasındaki linke tıklanmadan bildirim gelmez.
+
+- **`watchparty-site-down`**: `watchparty-health-check` Lambda'sı 5 dakikada bir `https://<cloudfront>/api/health`'i çağırır; art arda 2 başarısızlık ya da hiç çalışmama alarm verir. CloudFront + EC2 + uygulamayı birlikte sınar. (Organizasyon SCP'si yalnızca eu-north-1'e izin verdiği için Route 53 health check ve CloudFront metrikleri kullanılamıyor.)
+- **`watchparty-ec2-system-check`**: AWS tarafı donanım sorunu; instance otomatik olarak sağlam bir makineye taşınır (`recover`, EIP ve disk aynı kalır).
+- **`watchparty-ec2-instance-check`**: işletim sistemi tarafı sorun; yalnızca bildirim.
+- **`watchparty-ec2-cpu-high`**: CPU 15 dakika %80 üstü.
+
+Bildirim zincirini denemek için (gerçek durumu değiştirmez, bir sonraki ölçümde alarm OK'a döner):
+
+```powershell
+aws cloudwatch set-alarm-state --alarm-name watchparty-site-down --state-value ALARM --state-reason "Test" --profile watchparty
+```
+
 ## 8. Log okuma
 
 SSH portu yok; erişim SSM ile:

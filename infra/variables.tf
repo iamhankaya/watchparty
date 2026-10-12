@@ -21,3 +21,8 @@ variable "project" {
   type        = string
   default     = "watchparty"
 }
+
+variable "alert_email" {
+  description = "Alarm bildirimlerinin gideceği e-posta (infra/terraform.tfvars içinde verilir; repoya girmez)"
+  type        = string
+}
