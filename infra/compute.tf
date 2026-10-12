@@ -121,7 +121,10 @@ resource "aws_instance" "api" {
 
   lifecycle {
     # Yeni AMI yayınlandığında instance'ı yeniden oluşturma.
-    ignore_changes = [ami]
+    # user_data değişiklikleri (unit dosyası, env dosyası, bootstrap) çalışan instance'a
+    # uygulanmaz; uygulamak için: terraform -chdir=infra apply -replace=aws_instance.api
+    # (EIP ve origin secret aynı kalır; bellekteki lobiler kaybolur).
+    ignore_changes = [ami, user_data]
   }
 }
 

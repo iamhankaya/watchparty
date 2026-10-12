@@ -26,11 +26,16 @@ try {
 
 # --delete yok: açık sayfalar eski JS'i yükleyebilsin diye eski asset'ler kalır.
 Write-Host "Asset'ler yükleniyor (immutable)..."
-Invoke-Aws s3 sync (Join-Path $dist "assets") "$site/assets" --cache-control "public, max-age=31536000, immutable" | Out-Null
+# Content-Type açıkça verilir (Windows kayıt defteri MIME tahminine güvenilmez).
+$immutable = "public, max-age=31536000, immutable"
+$assets = Join-Path $dist "assets"
+Invoke-Aws s3 sync $assets "$site/assets" --exclude "*" --include "*.js" --content-type "application/javascript" --cache-control $immutable | Out-Null
+Invoke-Aws s3 sync $assets "$site/assets" --exclude "*" --include "*.css" --content-type "text/css" --cache-control $immutable | Out-Null
+Invoke-Aws s3 sync $assets "$site/assets" --exclude "*.js" --exclude "*.css" --cache-control $immutable | Out-Null
 
 Write-Host "index.html ve theme-init.js yükleniyor (no-cache)..."
-Invoke-Aws s3 cp (Join-Path $dist "index.html") "$site/index.html" --cache-control "no-cache" | Out-Null
-Invoke-Aws s3 cp (Join-Path $dist "theme-init.js") "$site/theme-init.js" --cache-control "no-cache" | Out-Null
+Invoke-Aws s3 cp (Join-Path $dist "index.html") "$site/index.html" --content-type "text/html; charset=utf-8" --cache-control "no-cache" | Out-Null
+Invoke-Aws s3 cp (Join-Path $dist "theme-init.js") "$site/theme-init.js" --content-type "application/javascript" --cache-control "no-cache" | Out-Null
 
 # dist kökündeki diğer dosyalar (favicon vb.) da no-cache ile.
 Get-ChildItem $dist -File | Where-Object { $_.Name -notin @("index.html", "theme-init.js") } | ForEach-Object {

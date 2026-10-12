@@ -6,7 +6,7 @@ set -euo pipefail
 dnf install -y libicu unzip
 
 # ASP.NET Core 10 runtime (framework-dependent publish için).
-curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
 chmod +x /tmp/dotnet-install.sh
 /tmp/dotnet-install.sh --runtime aspnetcore --channel 10.0 --install-dir /usr/share/dotnet
 rm -f /tmp/dotnet-install.sh

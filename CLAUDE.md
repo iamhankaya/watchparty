@@ -49,7 +49,7 @@ It asserts on substrings of the Turkish `HubException` messages (e.g. "bulunamad
 - `lib/sync.ts` `SyncEngine` pulls the player toward server state every 500 ms (seek if drift > 1.5 s; for MP4, 0.95/1.05 playback rate for 0.3–1.5 s drift).
 - Player native controls are disabled; only our buttons send commands to the server, and player events are **never** sent back. This prevents feedback loops from programmatic seeks — preserve this when touching `players/` or `components/Controls.tsx`.
 - Routing is hand-rolled in `App.tsx` (`/` and `/l/CODE`), no router library.
-- Theme: `index.html` sets `<html data-theme>` from localStorage (`wp:theme`) or the system preference before first paint; `lib/theme.ts` handles toggling. All colors are CSS tokens in `styles.css` (`:root` dark, `:root[data-theme="light"]` light) — add new colors as tokens for both themes. Fonts come from Google Fonts (deploy CSP must allow them).
+- Theme: `frontend/public/theme-init.js` (loaded synchronously from `index.html`) sets `<html data-theme>` from localStorage (`wp:theme`) or the system preference before first paint; it must not be inlined (CSP forbids inline scripts) and must stay in sync with `lib/theme.ts`, which handles toggling. All colors are CSS tokens in `styles.css` (`:root` dark, `:root[data-theme="light"]` light) — add new colors as tokens for both themes. Fonts come from Google Fonts (deploy CSP must allow them).
 
 ## Deployment
 

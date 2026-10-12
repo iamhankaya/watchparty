@@ -1,4 +1,4 @@
-// CloudFront Function (spa-rewrite.js) testleri: node --test infra/tests/
+// CloudFront Function (spa-rewrite.js) testleri: node --test "infra/tests/*.test.mjs"
 // CloudFront Function'lar modül değildir; dosya metni okunup handler çıkarılır.
 import { test } from "node:test";
 import assert from "node:assert/strict";

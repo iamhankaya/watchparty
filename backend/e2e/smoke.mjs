@@ -34,6 +34,7 @@ if (BASE.startsWith("https://")) {
 
 await safe("hub sohbet", async () => {
   const create = await fetch(BASE + "/api/lobbies", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ clientId: "smoke-host" }) });
+  if (!create.ok) throw new Error("POST /api/lobbies " + create.status);
   const { code } = await create.json();
   const mk = () => new signalR.HubConnectionBuilder().withUrl(BASE + "/hubs/lobby").configureLogging(signalR.LogLevel.None).build();
   const a = mk(), b = mk();
