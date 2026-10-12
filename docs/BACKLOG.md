@@ -9,6 +9,7 @@ Yapılacaklar, önem sırasıyla değil gruplar halinde. Bir madde ele alınınc
 ## Deploy ve altyapı
 
 - **Alan adı + ACM sertifikası.** Şu an `*.cloudfront.net`. Eklenince CloudFront → EC2 trafiği de HTTPS'e alınmalı (origin secret şu an EC2'ye düz HTTP ile gidiyor; asıl koruma güvenlik grubu).
+- **Videolar için ayrı bucket.** `tools/downloader` şimdilik site bucket'ına `videolar/` altına yüklüyor. Ayrı bir private video bucket'ı (OAC) ve CloudFront'ta `/videolar/*` için ayrı behavior eklenmeli: site dosyalarıyla karışmaz, yaşam döngüsü kuralıyla eski videolar otomatik silinebilir, deploy yetkileri ayrılır. `terraform apply` gerektirir.
 - **CI/CD (GitHub Actions).** Önce GitHub remote'u ve AWS OIDC rolü gerekir.
 - **İzleme:** CloudWatch alarmları (sunucu sağlığı, 5xx), log toplama.
 - **Remote Terraform state** (S3 + kilit). State şu an lokal `infra/terraform.tfstate`; içinde origin secret var, yedeklenmeli.
