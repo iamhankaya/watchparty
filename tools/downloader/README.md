@@ -36,6 +36,8 @@ python indir.py <url> --sadece-indir                                   # yüklem
 | `--maks-yukseklik` | | Daha yüksek çözünürlükleri küçültür |
 | `--crf` | | x264 kalitesi (varsayılan 23; küçük = daha kaliteli, daha büyük dosya) |
 | `--cikti` | | Yerel klasör, varsayılan `indirilenler` |
+| `--dosya` | | URL yerine hazır bir MP4'ü yükler (indirme ve dönüştürme yapılmaz) |
+| `--gizli` | | Anahtara tahmin edilemez bir klasör ekler; link bilinmeden dosya bulunamaz |
 
 Kaynak zaten H.264/AAC ise video yeniden kodlanmaz, sadece `faststart` ile kopyalanır (saniyeler sürer). Değilse x264 ile kodlanır; 1,5 saatlik bir film CPU'ya göre 15-60 dakika sürebilir.
 

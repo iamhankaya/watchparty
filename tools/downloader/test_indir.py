@@ -1,8 +1,8 @@
 import unittest
 from pathlib import Path
 
-from indir import (MAKS_URL_UZUNLUGU, ffmpeg_argumanlari, format_secici, genel_url,
-                   kopyalanabilir_mi, s3_anahtari, slug)
+from indir import (MAKS_URL_UZUNLUGU, argumanlari_oku, ffmpeg_argumanlari, format_secici,
+                   genel_url, gizli_onek, kopyalanabilir_mi, s3_anahtari, slug)
 
 
 class SlugTestleri(unittest.TestCase):
@@ -82,9 +82,30 @@ class S3Testleri(unittest.TestCase):
         self.assertEqual(genel_url("videolar/a.mp4", "kova", "eu-central-1", None),
                          "https://kova.s3.eu-central-1.amazonaws.com/videolar/a.mp4")
 
+    def test_gizli_onek_rastgele_ve_sinirin_altinda(self):
+        a, b = gizli_onek("videolar"), gizli_onek("videolar")
+        self.assertNotEqual(a, b)
+        self.assertRegex(a, r"^videolar/[0-9a-f]{32}$")
+        key = s3_anahtari(a, slug("x" * 200) + "-dQw4w9WgXcQ.mp4")
+        self.assertLessEqual(len(genel_url(key, "kova", "eu-north-1", "https://dp5rr1tulngd4.cloudfront.net")),
+                             MAKS_URL_UZUNLUGU)
+
     def test_tipik_url_sinirin_altinda(self):
         key = s3_anahtari("videolar", slug("x" * 200) + "-" + slug("dQw4w9WgXcQ", 20) + ".mp4")
         self.assertLessEqual(len(genel_url(key, "kova", "eu-central-1", None)), MAKS_URL_UZUNLUGU)
+
+
+class ArgumanTestleri(unittest.TestCase):
+    def test_url_ya_da_dosya_zorunlu(self):
+        with self.assertRaises(SystemExit):
+            argumanlari_oku([])
+
+    def test_url_ve_dosya_birlikte_verilemez(self):
+        with self.assertRaises(SystemExit):
+            argumanlari_oku(["https://x", "--dosya", "a.mp4"])
+
+    def test_sadece_dosya(self):
+        self.assertEqual(argumanlari_oku(["--dosya", "a.mp4"]).dosya, Path("a.mp4"))
 
 
 if __name__ == "__main__":

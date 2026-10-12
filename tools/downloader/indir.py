@@ -13,6 +13,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -88,6 +90,11 @@ def s3_anahtari(onek: str, dosya_adi: str) -> str:
     return f"{onek}/{dosya_adi}" if onek else dosya_adi
 
 
+def gizli_onek(onek: str) -> str:
+    """Linki bilmeyenin bulamaması için öneke tahmin edilemez bir klasör ekler."""
+    return f"{onek.strip('/')}/{secrets.token_hex(16)}".lstrip("/")
+
+
 def genel_url(key: str, bucket: str, bolge: str, cdn_url: str | None) -> str:
     if cdn_url:
         return f"{cdn_url.rstrip('/')}/{quote(key)}"
@@ -119,7 +126,9 @@ def indir(url: str, klasor: Path, maks_yukseklik: int | None) -> tuple[Path, str
     except yt_dlp.utils.DownloadError as e:
         raise AracHatasi(f"İndirme başarısız: {e}") from e
     yol = Path(bilgi["requested_downloads"][0]["filepath"])
-    ad = f"{slug(bilgi.get('title') or 'video')}-{slug(str(bilgi.get('id') or ''), 20)}"
+    # YouTube id'leri büyük/küçük harfe duyarlı; slug'a sokulmaz.
+    kimlik = re.sub(r"[^A-Za-z0-9_-]", "", str(bilgi.get("id") or ""))[:20]
+    ad = f"{slug(bilgi.get('title') or 'video')}-{kimlik}".rstrip("-")
     return yol, ad
 
 
@@ -175,7 +184,9 @@ def yukle(yol: Path, bucket: str, key: str, bolge: str | None) -> str:
 
 def argumanlari_oku(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Videoyu indirir, web'e uygun MP4'e çevirir ve S3'e yükler.")
-    p.add_argument("url", help="İndirilecek videonun adresi")
+    p.add_argument("url", nargs="?", help="İndirilecek videonun adresi")
+    p.add_argument("--dosya", type=Path, help="İndirmek yerine bu hazır MP4'ü yükle")
+    p.add_argument("--gizli", action="store_true", help="Anahtara tahmin edilemez bir klasör ekle")
     p.add_argument("--cikti", type=Path, default=Path("indirilenler"), help="İndirme klasörü (varsayılan: indirilenler)")
     p.add_argument("--maks-yukseklik", type=int, help="Örn. 720: daha yüksek çözünürlükler küçültülür")
     p.add_argument("--crf", type=int, default=23, help="x264 kalite değeri, küçük = daha kaliteli/büyük (varsayılan: 23)")
@@ -184,7 +195,10 @@ def argumanlari_oku(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--bolge", default=os.environ.get("AWS_REGION"), help="Bucket bölgesi (verilmezse sorgulanır)")
     p.add_argument("--cdn-url", default=os.environ.get("WP_CDN_URL"), help="CloudFront adresi (ya da WP_CDN_URL), ör. https://dxxxx.cloudfront.net")
     p.add_argument("--sadece-indir", action="store_true", help="S3'e yükleme yapma")
-    return p.parse_args(argv)
+    a = p.parse_args(argv)
+    if bool(a.url) == bool(a.dosya):
+        p.error("ya bir url ya da --dosya verin")
+    return a
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -194,21 +208,25 @@ def main(argv: list[str] | None = None) -> int:
             akis.reconfigure(encoding="utf-8", errors="replace")
     a = argumanlari_oku(argv)
     try:
-        araclari_kontrol_et()
         if not a.sadece_indir and not a.s3_bucket:
             raise AracHatasi("Bucket belirtilmedi: --s3-bucket verin, WP_S3_BUCKET ayarlayın ya da --sadece-indir kullanın.")
-        a.cikti.mkdir(parents=True, exist_ok=True)
-
-        ham, ad = indir(a.url, a.cikti, a.maks_yukseklik)
-        son = a.cikti / f"{ad}.mp4"
-        donustur(ham, son, a.maks_yukseklik, a.crf)
-        if ham != son:
-            ham.unlink(missing_ok=True)
+        if a.dosya:
+            if not a.dosya.is_file():
+                raise AracHatasi(f"Dosya bulunamadı: {a.dosya}")
+            son = a.dosya
+        else:
+            araclari_kontrol_et()
+            a.cikti.mkdir(parents=True, exist_ok=True)
+            ham, ad = indir(a.url, a.cikti, a.maks_yukseklik)
+            son = a.cikti / f"{ad}.mp4"
+            donustur(ham, son, a.maks_yukseklik, a.crf)
+            if ham != son:
+                ham.unlink(missing_ok=True)
         print(f"Hazır: {son} ({son.stat().st_size / 1024**3:.2f} GB)")
 
         if a.sadece_indir:
             return 0
-        key = s3_anahtari(a.s3_onek, son.name)
+        key = s3_anahtari(gizli_onek(a.s3_onek) if a.gizli else a.s3_onek, son.name)
         bolge = yukle(son, a.s3_bucket, key, a.bolge)
         url = genel_url(key, a.s3_bucket, bolge, a.cdn_url)
         print(f"\nLobiye yapıştırılacak link:\n{url}")

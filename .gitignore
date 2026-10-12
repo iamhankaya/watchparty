@@ -486,3 +486,6 @@ infra/.terraform/
 *.tfstate
 *.tfstate.*
 *.tfvars
+
+# Claude Code yerel ayarları
+.claude/settings.local.json
