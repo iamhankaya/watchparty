@@ -9,6 +9,9 @@ public class SecurityOptions
     // CloudFront arkasında true olmalı; aksi halde X-Forwarded-For sahte olabilir. Araya başka bir proxy (ör. ALB) girerse ForwardLimit artırılmalı.
     public bool TrustForwardedHeaders { get; set; } = false;
 
+    // CloudFront'un X-Origin-Verify header'ında gönderdiği gizli değer; boş/boşluk ise kontrol kapalı (loopback her zaman muaf).
+    public string OriginSecret { get; set; } = "";
+
     // IP başına dakikalık HTTP limitleri
     [Range(1, int.MaxValue)] public int CreateLobbyPerMinute { get; set; } = 10;
     [Range(1, int.MaxValue)] public int LookupLobbyPerMinute { get; set; } = 60;
