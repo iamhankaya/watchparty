@@ -123,11 +123,26 @@ test_hanging_health_is_bounded_and_rolls_back() {
   [ "$(grep -c 'restart watchparty' "$LOG")" -eq 2 ]; check "iki restart" $?
 }
 
+test_failed_restart_rolls_back() {
+  deploy r1
+  : > "$LOG"
+  # yalnızca yeni sürüm için (ilk restart) başarısız olan sahte systemctl
+  printf '#!/usr/bin/env bash
+echo "$*" >> "%s"
+if [ "$1" = restart ] && [ ! -e "%s/failed-once" ]; then touch "%s/failed-once"; exit 1; fi
+' "$LOG" "$T" "$T" > "$T/systemctl"
+  deploy r2; rc=$?
+  [ "$rc" -eq 1 ]; check "çıkış 1" $?
+  [ "$(target)" = "$WP_ROOT/releases/r1" ]; check "current -> r1" $?
+  [ "$(grep -c 'restart watchparty' "$LOG")" -eq 2 ]; check "geri alma restart'ı denendi" $?
+}
+
 run test_deploy_success_switches_current
 run test_failed_health_rolls_back
 run test_first_deploy_failure_leaves_no_current
 run test_keeps_last_five_releases
 run test_rollback_command
+run test_failed_restart_rolls_back
 run test_fetch_failure_leaves_everything_untouched
 run test_hanging_health_is_bounded_and_rolls_back
 

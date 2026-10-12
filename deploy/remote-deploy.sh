@@ -64,25 +64,28 @@ do_deploy() {
 
   prev="$(readlink "$CURRENT" 2>/dev/null || true)"
   log "current -> $dir (önceki: ${prev:-yok})"
-  ln -sfn "$dir" "$CURRENT"
-  $WP_SYSTEMCTL restart "$SERVICE"
-
-  if wait_healthy; then
-    log "Sağlık kontrolü başarılı."
-    prune_releases
-    return 0
+  # Geçiş sonrası restart hatası da sağlık hatası sayılır: normal geri alma yoluna düşer.
+  if ln -sfn "$dir" "$CURRENT" && $WP_SYSTEMCTL restart "$SERVICE"; then
+    if wait_healthy; then
+      log "Sağlık kontrolü başarılı."
+      prune_releases
+      return 0
+    fi
+    log "HATA: sağlık kontrolü ${WP_HEALTH_TIMEOUT} sn içinde başarısız oldu."
+  else
+    log "HATA: yeni sürüm başlatılamadı (restart başarısız)."
   fi
-
-  log "HATA: sağlık kontrolü ${WP_HEALTH_TIMEOUT} sn içinde başarısız oldu."
   rm -rf "$dir"
   if [ -n "$prev" ]; then
     log "Önceki sürüme dönülüyor: $prev"
-    ln -sfn "$prev" "$CURRENT"
-    $WP_SYSTEMCTL restart "$SERVICE"
+    ln -sfn "$prev" "$CURRENT" || log "HATA: current önceki sürüme çevrilemedi."
+    $WP_SYSTEMCTL restart "$SERVICE" || log "HATA: önceki sürüm yeniden başlatılamadı."
+    log "Aktif sürüm: $(readlink "$CURRENT" 2>/dev/null || echo yok)"
   else
     log "Önceki sürüm yok; current kaldırılıp servis durduruluyor."
     rm -f "$CURRENT"
-    $WP_SYSTEMCTL stop "$SERVICE"
+    $WP_SYSTEMCTL stop "$SERVICE" || log "HATA: servis durdurulamadı."
+    log "Aktif sürüm: yok"
   fi
   return 1
 }
@@ -102,13 +105,16 @@ do_rollback() {
     return 1
   fi
   log "Geri alınıyor: $cur -> $prev"
-  ln -sfn "$prev" "$CURRENT"
-  $WP_SYSTEMCTL restart "$SERVICE"
-  if wait_healthy; then
-    log "Sağlık kontrolü başarılı."
-    return 0
+  if ln -sfn "$prev" "$CURRENT" && $WP_SYSTEMCTL restart "$SERVICE"; then
+    log "Aktif sürüm: $(readlink "$CURRENT" 2>/dev/null || echo yok)"
+    if wait_healthy; then
+      log "Sağlık kontrolü başarılı."
+      return 0
+    fi
+    log "HATA: geri aldıktan sonra sağlık kontrolü başarısız."
+  else
+    log "HATA: geri alma sırasında link/restart başarısız. Aktif sürüm: $(readlink "$CURRENT" 2>/dev/null || echo yok)"
   fi
-  log "HATA: geri aldıktan sonra sağlık kontrolü başarısız."
   return 1
 }
 
