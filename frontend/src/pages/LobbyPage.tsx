@@ -18,8 +18,10 @@ import { PlayerArea } from "../components/PlayerArea";
 import { Controls } from "../components/Controls";
 import { MediaPicker } from "../components/MediaPicker";
 import { Participants } from "../components/Participants";
-import { ShareBox } from "../components/ShareBox";
 import { Chat } from "../components/Chat";
+import { LobbyStrip } from "../components/LobbyStrip";
+import { SidePanel } from "../components/SidePanel";
+import { CodeBoard } from "../components/CodeBoard";
 
 interface Props {
   code: string;
@@ -206,7 +208,8 @@ export function LobbyPage({ code, navigate }: Props) {
     return (
       <main className="center">
         <form className="card narrow" onSubmit={handleNicknameSubmit}>
-          <h2>Lobi {code}</h2>
+          <CodeBoard code={code} />
+          <h2>Bu lobiye katıl</h2>
           <label className="field">
             <span>Takma ad</span>
             <input value={nickname} onChange={(e) => setNickname(e.target.value)} maxLength={MAX_NICKNAME} autoFocus placeholder="ör. Ayşe" />
@@ -231,67 +234,80 @@ export function LobbyPage({ code, navigate }: Props) {
     <Chat messages={chat} myNickname={me?.nickname ?? nickname} onSend={(text) => conn?.sendChat(text).catch((err) => { showError(err); throw err; })} />
   );
 
-  return (
-    <main className="lobby">
-      <section className="stage">
-        <div ref={theaterRef} className={`theater${isFullscreen ? " is-fullscreen" : ""}${isFullscreen && chatOpen ? " with-chat" : ""}`}>
-          <div className="theater-main">
-            <PlayerArea
-              playback={playback}
-              onPlayer={handlePlayer}
-              onError={showError}
-              blocked={blocked}
-              canControl={canControl && !!playback?.mediaId}
-              onTogglePlay={() =>
-                (playback?.isPlaying ? conn?.pause(serverPosition()) : conn?.play(serverPosition()))?.catch(showError)
-              }
-              onUnblock={() => engineRef.current?.unblock()}
-            />
-            <Controls
-              playback={playback}
-              disabled={!canControl || !playback?.mediaId}
-              getPosition={() => engineRef.current?.currentPosition() ?? serverPosition()}
-              getDuration={() => engineRef.current?.duration() ?? 0}
-              onPlay={() => conn?.play(serverPosition()).catch(showError)}
-              onPause={() => conn?.pause(serverPosition()).catch(showError)}
-              onSeek={(sec) => conn?.seek(sec).catch(showError)}
-              volume={volume}
-              onVolume={setVolume}
-              isFullscreen={isFullscreen}
-              onToggleFullscreen={toggleFullscreen}
-              chatOpen={chatOpen}
-              onToggleChat={() => setChatOpen((o) => !o)}
-            />
-          </div>
-          {isFullscreen && chatOpen && chatBox}
-          {/* Tam ekranda sadece bu kutunun içi görünür, bildirimler de burada olmalı. */}
-          {toast && (
-            <div className={`toast toast-${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"} onClick={() => setToast(null)}>
-              {toast.text}
-            </div>
-          )}
+  const theater = (
+    <div ref={theaterRef} className={`theater${isFullscreen ? " is-fullscreen" : ""}${isFullscreen && chatOpen ? " with-chat" : ""}`}>
+      <div className="theater-main">
+        <PlayerArea
+          playback={playback}
+          onPlayer={handlePlayer}
+          onError={showError}
+          blocked={blocked}
+          canControl={canControl && !!playback?.mediaId}
+          onTogglePlay={() =>
+            (playback?.isPlaying ? conn?.pause(serverPosition()) : conn?.play(serverPosition()))?.catch(showError)
+          }
+          onUnblock={() => engineRef.current?.unblock()}
+        />
+        <Controls
+          playback={playback}
+          disabled={!canControl || !playback?.mediaId}
+          getPosition={() => engineRef.current?.currentPosition() ?? serverPosition()}
+          getDuration={() => engineRef.current?.duration() ?? 0}
+          onPlay={() => conn?.play(serverPosition()).catch(showError)}
+          onPause={() => conn?.pause(serverPosition()).catch(showError)}
+          onSeek={(sec) => conn?.seek(sec).catch(showError)}
+          volume={volume}
+          onVolume={setVolume}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={toggleFullscreen}
+          chatOpen={chatOpen}
+          onToggleChat={() => setChatOpen((o) => !o)}
+        />
+      </div>
+      {isFullscreen && chatOpen && chatBox}
+      {/* Tam ekranda sadece bu kutunun içi görünür, bildirimler de burada olmalı. */}
+      {toast && (
+        <div className={`toast toast-${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"} onClick={() => setToast(null)}>
+          {toast.text}
         </div>
-        <MediaPicker disabled={!canControl} onSubmit={(type, id) => conn?.setMedia(type, id).catch(showError)} />
-        {!canControl && <p className="muted small">Bu lobide oynatmayı sadece host kontrol ediyor.</p>}
-      </section>
+      )}
+    </div>
+  );
 
-      <aside className="sidebar">
-        <ShareBox code={code} status={status} />
-        <Participants participants={participants} selfId={selfId} />
-        {isHost && (
-          <div className="card">
-            <h3>Host ayarları</h3>
-            <label className="check">
-              <input type="checkbox" checked={hostOnly} onChange={(e) => conn?.setControlMode(e.target.checked).catch(showError)} />
-              <span>
-                Sadece ben kontrol edeyim
-                <small className="muted">Kapalıyken herkes oynat, durdur ve ileri sar yapabilir.</small>
-              </span>
-            </label>
-          </div>
-        )}
-        {!isFullscreen && chatBox}
-      </aside>
+  const mediaPicker = <MediaPicker disabled={!canControl} onSubmit={(type, id) => conn?.setMedia(type, id).catch(showError)} />;
+  const hostOnlyNote = !canControl && <p className="muted small">Bu lobide oynatmayı sadece host kontrol ediyor.</p>;
+  const hostSettings = isHost && (
+    <div className="card host-settings">
+      <h3>Host ayarları</h3>
+      <label className="check">
+        <input type="checkbox" checked={hostOnly} onChange={(e) => conn?.setControlMode(e.target.checked).catch(showError)} />
+        <span>
+          Sadece ben kontrol edeyim
+          <small className="muted">Kapalıyken herkes oynat, durdur ve ileri sar yapabilir.</small>
+        </span>
+      </label>
+    </div>
+  );
+
+  return (
+    <main className="cn-lobby">
+      <LobbyStrip code={code} status={status} participants={participants} />
+      <section className="stage">
+        {theater}
+        {mediaPicker}
+        {hostOnlyNote}
+      </section>
+      <SidePanel
+        chat={isFullscreen ? <p className="muted small cn-pane-note">Sohbet tam ekranda açık.</p> : chatBox}
+        people={
+          <>
+            <Participants participants={participants} selfId={selfId} />
+            {hostSettings}
+          </>
+        }
+        peopleCount={participants.length}
+        messageCount={chat.length}
+      />
     </main>
   );
 }

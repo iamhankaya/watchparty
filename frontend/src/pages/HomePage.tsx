@@ -7,7 +7,8 @@ interface Props {
   navigate(to: string): void;
 }
 
-export function HomePage({ navigate }: Props) {
+// Ana sayfanın durumu ve işlemleri.
+function useHomeForm(navigate: Props["navigate"]) {
   const [nickname, setNickname] = useState(getNickname());
   const [hostOnly, setHostOnly] = useState(false);
   const [joinCode, setJoinCode] = useState("");
@@ -38,16 +39,25 @@ export function HomePage({ navigate }: Props) {
     navigate(`/l/${code}`);
   }
 
+  return { nickname, setNickname, hostOnly, setHostOnly, joinCode, setJoinCode, busy, error, handleCreate, handleJoin };
+}
+
+// Solda başlık, sağda iki yarısı olan bir bilet: üstte lobi oluşturma, altta kodla katılma.
+export function HomePage({ navigate }: Props) {
+  const { nickname, setNickname, hostOnly, setHostOnly, joinCode, setJoinCode, busy, error, handleCreate, handleJoin } = useHomeForm(navigate);
   return (
-    <main className="home">
-      <section className="hero">
-        <h1>Birlikte izleyin, aynı anda.</h1>
-        <p className="muted">Bir lobi aç, linki paylaş, YouTube videosunu ya da filmi herkes aynı saniyede izlesin.</p>
+    <main className="cn-home">
+      <section className="cn-hero">
+        <h1>
+          Aynı film,
+          <br />
+          aynı saniye.
+        </h1>
+        <p>Bir lobi aç, linki arkadaşlarına gönder. YouTube videosu ya da MP4 dosyası herkeste aynı anda oynar, yanında sohbet edersiniz.</p>
       </section>
 
-      <div className="home-grid">
-        <form className="card" onSubmit={handleCreate}>
-          <h2>Lobi oluştur</h2>
+      <div className="cn-ticket">
+        <form className="cn-ticket-main" onSubmit={handleCreate}>
           <label className="field">
             <span>Takma ad</span>
             <input value={nickname} onChange={(e) => setNickname(e.target.value)} maxLength={MAX_NICKNAME} placeholder="ör. Metehan" autoFocus />
@@ -56,30 +66,30 @@ export function HomePage({ navigate }: Props) {
             <input type="checkbox" checked={hostOnly} onChange={(e) => setHostOnly(e.target.checked)} />
             <span>
               Sadece ben kontrol edeyim
-              <small className="muted">Kapalıysa herkes oynat, durdur ve ileri sar yapabilir. Sonra da değiştirebilirsin.</small>
+              <small className="muted">Kapalıysa herkes oynatıp durdurabilir. Sonra da değiştirebilirsin.</small>
             </span>
           </label>
           <button className="primary" disabled={busy}>
             {busy ? "Oluşturuluyor..." : "Lobi oluştur"}
           </button>
+          {error && <p className="error">{error}</p>}
         </form>
 
-        <form className="card" onSubmit={handleJoin}>
-          <h2>Lobiye katıl</h2>
+        <form className="cn-ticket-stub" onSubmit={handleJoin}>
           <label className="field">
-            <span>Lobi kodu</span>
+            <span>Davet kodun varsa</span>
             <input
               value={joinCode}
               onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
               maxLength={6}
               placeholder="K7Q2MX"
               className="code-input"
+              aria-label="Lobi kodu"
             />
           </label>
-          <button disabled={!joinCode.trim()}>Katıl</button>
+          <button disabled={!joinCode.trim()}>Lobiye katıl</button>
         </form>
       </div>
-      {error && <p className="error">{error}</p>}
     </main>
   );
 }
