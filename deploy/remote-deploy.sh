@@ -5,7 +5,7 @@ set -euo pipefail
 
 WP_ROOT="${WP_ROOT:-/opt/watchparty}"
 WP_SYSTEMCTL="${WP_SYSTEMCTL:-systemctl}"
-WP_HEALTH="${WP_HEALTH:-curl -fsS -o /dev/null http://localhost/api/health}"
+WP_HEALTH="${WP_HEALTH:-curl -fsS --connect-timeout 2 --max-time 2 -o /dev/null http://localhost/api/health}"
 WP_FETCH="${WP_FETCH:-aws s3 cp}"
 WP_HEALTH_TIMEOUT="${WP_HEALTH_TIMEOUT:-20}"
 WP_CHOWN="${WP_CHOWN:-chown -R watchparty:watchparty}"
@@ -17,12 +17,15 @@ CURRENT="$WP_ROOT/current"
 
 log() { echo "[remote-deploy] $*"; }
 
-# Sağlık kontrolü: timeout saniye boyunca saniyede bir dener.
+# Sağlık kontrolü: WP_HEALTH_TIMEOUT saniyelik son tarih içinde saniyede bir dener;
+# takılan tek bir deneme de kalan süreyle sınırlanır (timeout).
 wait_healthy() {
-  local i
-  for ((i = 0; i < WP_HEALTH_TIMEOUT; i++)); do
+  local deadline remaining
+  deadline=$((SECONDS + WP_HEALTH_TIMEOUT))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    remaining=$((deadline - SECONDS))
     # shellcheck disable=SC2086
-    if $WP_HEALTH; then return 0; fi
+    if timeout "$remaining" $WP_HEALTH; then return 0; fi
     sleep 1
   done
   return 1
@@ -45,18 +48,19 @@ do_deploy() {
   dir="$RELEASES/$release"
   mkdir -p "$RELEASES"
 
-  zip="$(mktemp --suffix=.zip)"
+  # Geçişten önceki her hata current'a ve servise dokunmadan, yarım release silinerek biter.
+  zip="$(mktemp --suffix=.zip)" || { log "HATA: geçici dosya oluşturulamadı."; return 1; }
   log "Paket indiriliyor: $uri"
   # shellcheck disable=SC2086
-  $WP_FETCH "$uri" "$zip"
+  $WP_FETCH "$uri" "$zip" || { log "HATA: paket indirilemedi."; rm -rf "$zip" "$dir"; return 1; }
 
   log "Açılıyor: $dir"
   rm -rf "$dir"
   mkdir -p "$dir"
-  unzip -q -o "$zip" -d "$dir"
+  unzip -q -o "$zip" -d "$dir" || { log "HATA: zip açılamadı."; rm -rf "$zip" "$dir"; return 1; }
   rm -f "$zip"
   # shellcheck disable=SC2086
-  $WP_CHOWN "$dir"
+  $WP_CHOWN "$dir" || { log "HATA: sahiplik verilemedi."; rm -rf "$dir"; return 1; }
 
   prev="$(readlink "$CURRENT" 2>/dev/null || true)"
   log "current -> $dir (önceki: ${prev:-yok})"
@@ -111,10 +115,10 @@ do_rollback() {
 case "${1:-}" in
   deploy)
     [ $# -eq 3 ] || { log "Kullanım: remote-deploy.sh deploy <s3-uri> <release>"; exit 1; }
-    do_deploy "$2" "$3" || exit 1
+    do_deploy "$2" "$3"
     ;;
   rollback)
-    do_rollback || exit 1
+    do_rollback
     ;;
   *)
     log "Kullanım: remote-deploy.sh deploy <s3-uri> <release> | rollback"

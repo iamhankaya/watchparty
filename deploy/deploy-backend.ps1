@@ -41,7 +41,7 @@ if ($Rollback) {
 }
 
 # remote-deploy.sh içeriği base64 ile gönderilir (CRLF -> LF; autocrlf açık makinelerde gerekli).
-$scriptText = (Get-Content (Join-Path $PSScriptRoot "remote-deploy.sh") -Raw) -replace "`r", ""
+$scriptText = ([System.IO.File]::ReadAllText((Join-Path $PSScriptRoot "remote-deploy.sh"), [System.Text.Encoding]::UTF8)) -replace "`r", ""
 $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($scriptText))
 $command = "echo $b64 | base64 -d > /tmp/remote-deploy.sh && bash /tmp/remote-deploy.sh $remoteArgs"
 

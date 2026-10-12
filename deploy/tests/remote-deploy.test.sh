@@ -101,11 +101,35 @@ test_rollback_command() {
   [ "$rc" -eq 1 ]; check "tek release varken rollback çıkış 1" $?
 }
 
+test_fetch_failure_leaves_everything_untouched() {
+  deploy r1
+  : > "$LOG"
+  WP_FETCH=false deploy r2; rc=$?
+  [ "$rc" -eq 1 ]; check "çıkış 1" $?
+  [ "$(target)" = "$WP_ROOT/releases/r1" ]; check "current değişmedi" $?
+  [ ! -s "$LOG" ]; check "restart/stop çağrılmadı" $?
+  [ ! -d "$WP_ROOT/releases/r2" ]; check "yarım release silindi" $?
+}
+
+test_hanging_health_is_bounded_and_rolls_back() {
+  deploy r1
+  : > "$LOG"
+  start=$SECONDS
+  WP_HEALTH_TIMEOUT=2 WP_HEALTH="sleep 30" timeout 20 bash "$SCRIPT" deploy s3://b/r2.zip r2 >/dev/null 2>&1; rc=$?
+  elapsed=$((SECONDS - start))
+  [ "$rc" -eq 1 ]; check "çıkış 1 (zaman aşımı 124 değil)" $?
+  [ "$elapsed" -le 6 ]; check "süre sınırlı ($elapsed sn)" $?
+  [ "$(target)" = "$WP_ROOT/releases/r1" ]; check "current -> r1" $?
+  [ "$(grep -c 'restart watchparty' "$LOG")" -eq 2 ]; check "iki restart" $?
+}
+
 run test_deploy_success_switches_current
 run test_failed_health_rolls_back
 run test_first_deploy_failure_leaves_no_current
 run test_keeps_last_five_releases
 run test_rollback_command
+run test_fetch_failure_leaves_everything_untouched
+run test_hanging_health_is_bounded_and_rolls_back
 
 echo "Sonuç: $PASS geçti, $FAIL kaldı"
 [ "$FAIL" -eq 0 ]
