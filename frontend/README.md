@@ -59,6 +59,6 @@ src/
 
 - Backend medya id'sini en fazla 200 karakter kabul ediyor; çok uzun (ör. imzalı) film URL'leri reddedilir.
   S3/CloudFront adımında burada URL yerine film id'si gönderilecek.
-- Prod'da S3/CloudFront'ta `/l/KOD` gibi adresler için 403/404 → `index.html` yönlendirmesi gerekecek (SPA).
+- SPA yönlendirmesi: CloudFront Function (`infra/spa-rewrite.js`) uzantısız yolları `index.html`'e yazar; custom error response kullanılmaz çünkü API'nin 404'ünü bozar.
 - Fontlar (Big Shoulders Display, Instrument Sans) Google Fonts'tan yüklenir. Prod CSP'sinde
   `style-src` için `fonts.googleapis.com`, `font-src` için `fonts.gstatic.com` izinli olmalı.
