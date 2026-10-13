@@ -52,6 +52,7 @@ video.player-frame::cue { font-family: var(--body); font-size: 1.2rem; line-heig
   --shadow: rgba(0, 0, 0, 0.55);
   --cue-bg: rgba(22, 11, 15, 0.78);
   --cue-text: #f4e7dd;
+  --waiting: #7fb6d9;
   --display: "Big Shoulders Display", "Arial Narrow", sans-serif;
   --body: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   color-scheme: dark;
@@ -79,6 +80,7 @@ video.player-frame::cue { font-family: var(--body); font-size: 1.2rem; line-heig
   --shadow: rgba(58, 17, 25, 0.18);
   --cue-bg: rgba(43, 18, 25, 0.78);
   --cue-text: #fffdfc;
+  --waiting: #2c6a93;
   color-scheme: light;
 }
 
@@ -345,3 +347,8 @@ button.cn-board:hover:not(:disabled) { box-shadow: inset 0 0 0 1px var(--bulb), 
 .lost-banner p { margin: 0; flex: 1; min-width: 200px; }
 .lost-banner button.full { width: auto; margin-top: 0; padding: 8px 16px; }
 .lost-banner button.full:first-of-type { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+
+/* Takılan biri beklenirken oynatıcının üstünde çıkan şerit */
+.waiting-banner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--waiting); border-radius: 14px; padding: 10px 16px; }
+.waiting-banner p { margin: 0; flex: 1; min-width: 200px; }
+.waiting-banner button { padding: 6px 14px; border-color: var(--waiting); }

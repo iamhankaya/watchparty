@@ -32,6 +32,7 @@ import { Chat } from "../components/Chat";
 import { LobbyStrip } from "../components/LobbyStrip";
 import { SidePanel } from "../components/SidePanel";
 import { CodeBoard } from "../components/CodeBoard";
+import { WaitingBanner } from "../components/WaitingBanner";
 
 interface Props {
   code: string;
@@ -96,12 +97,16 @@ export function LobbyPage({ code, navigate }: Props) {
         setPhase("joining");
       }
 
-      const engine = new SyncEngine(clockRef.current, setBlocked, () => {});
+      // Takılma bildirimi otomatiktir; hatası (ör. rate limit, kopuk bağlantı) kullanıcıya gösterilmez.
+      let conn: LobbyConnection | null = null;
+      const engine = new SyncEngine(clockRef.current, setBlocked, (buffering) => {
+        conn?.reportBuffering(buffering).catch(() => {});
+      });
       engineRef.current = engine;
       engine.start();
       engine.setPlayer(playerRef.current);
 
-      const conn = createLobbyConnection({
+      conn = createLobbyConnection({
         participantsChanged: setParticipants,
         playbackUpdated: (s) => {
           setPlayback(s);
@@ -111,12 +116,19 @@ export function LobbyPage({ code, navigate }: Props) {
         hostChanged: (name) => setToast({ text: `Yeni host: ${name}`, kind: "info" }),
         chatHistory: setChat,
         chatMessage: (m) => setChat((list) => [...list, m].slice(-200)),
+        bufferingIgnored: (name) => setToast({ text: `${name}'nin bağlantısı yavaş; beklenmeyecek`, kind: "info" }),
         joined: (r) => {
+          // İlk katılımda ve her yeniden katılımda yeni selfId gelir.
+          engine.setSelfId(r.selfId);
           setSelfId(r.selfId);
           setJoinedAsHost(r.isHost);
         },
-        // Eski bağlantının geç gelen olayları yeni bağlantının durumunu ezmesin.
-        statusChanged: (st) => connRef.current === conn && setStatus(st),
+        statusChanged: (st) => {
+          // Kopunca kimliğimiz geçersizdir; motorun takılma sayaçları sıfırlansın (yeniden katılınca yenisi gelir).
+          if (st === "reconnecting" || st === "disconnected") engine.setSelfId(null);
+          // Eski bağlantının geç gelen olayları yeni bağlantının durumunu ezmesin.
+          if (connRef.current === conn) setStatus(st);
+        },
         connectionLost: (reason) => {
           if (connRef.current !== conn) return;
           setLostReason(reason);
@@ -295,6 +307,13 @@ export function LobbyPage({ code, navigate }: Props) {
   const theater = (
     <div ref={theaterRef} className={`theater${isFullscreen ? " is-fullscreen" : ""}${isFullscreen && chatOpen ? " with-chat" : ""}`}>
       <div className="theater-main">
+        <WaitingBanner
+          playback={playback}
+          participants={participants}
+          selfId={selfId}
+          canControl={canControl}
+          onSkip={() => conn?.skipWaiting().catch(showError)}
+        />
         <PlayerArea
           playback={playback}
           onPlayer={handlePlayer}
