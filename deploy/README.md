@@ -105,6 +105,34 @@ deploy\deploy-backend.ps1 -Rollback   # yeni paket yüklemeden current'ı bir ö
 
 Frontend için rollback script'i yok; önceki commit'e geçip (git checkout) `deploy-frontend.ps1`'i yeniden çalıştırın (eski asset'ler bucket'ta kaldığı için açık sayfalar bozulmaz).
 
+## GitHub Actions (CI ve deploy)
+
+**CI** (`.github/workflows/ci.yml`) her push ve PR'da AWS'ye erişmeden dört işi paralel koşar: `backend` (`dotnet test backend/WatchParty.slnx`), `frontend` (`npm ci`, `npm test`, `npm run build`), `infra` (`terraform fmt -check`, `init -backend=false`, `validate`; `infra/tests` Node testleri; `deploy/tests/remote-deploy.test.sh`) ve `downloader` (`python -m unittest`). Aynı daldaki eski koşu yeni push gelince iptal edilir.
+
+**Deploy** (`.github/workflows/deploy.yml`) yalnızca elle başlar: GitHub → Actions → Deploy → Run workflow → `hedef` (`frontend` | `backend` | `ikisi`, varsayılan `frontend`). Yalnızca `master`'dan çalışır; sıra her zaman önce backend. İş `windows-latest` üzerinde mevcut `deploy\deploy-backend.ps1 -Profile ""` / `deploy\deploy-frontend.ps1 -Profile ""` script'lerini çalıştırır, ardından canlı smoke testini koşar. Aynı anda tek deploy çalışır. Backend'deki otomatik geri dönüş (sağlık kontrolü) CI'da da aynen geçerlidir.
+
+- **Backend deploy'u bellekteki lobileri düşürür.** İnsanlar izlerken `backend` ya da `ikisi` başlatmayın. CI deploy'unu ilk denerken `hedef=frontend` seçin (lobilere dokunmaz).
+- Script'ler `WP_OUTPUTS_FROM_SSM=1` ile çıktıları `terraform output` yerine SSM parametresi `/watchparty/infra-outputs`'tan okur (gizli değer içermez; Terraform her `apply`'da günceller). `-Profile ""` ise `--profile` eklenmemesini sağlar: aws CLI ortamdaki OIDC kimliğini kullanır.
+
+### İlk kurulum (tek seferlik)
+
+```powershell
+terraform -chdir=infra apply    # OIDC sağlayıcısı, rol, SSM parametresi: yalnızca ekleme olmalı (N to add, 0 to change, 0 to destroy)
+gh variable set AWS_DEPLOY_ROLE_ARN --body (terraform -chdir=infra output -raw github_deploy_role_arn)
+```
+
+### Rolün sınırları
+
+`watchparty-github-deploy` (`infra/github.tf`) GitHub OIDC ile üstlenilir; kalıcı access key ya da GitHub secret yoktur.
+
+- Güven politikası yalnızca `repo:iamhankaya/watchparty:ref:refs/heads/master` için geçerlidir (repo adı `github_repo` değişkeni); başka dal ya da PR üstlenemez.
+- Terraform state bucket'ına (`watchparty-tfstate-*`) hiçbir izni yoktur (state origin secret'ı içerir); `terraform apply` CI'dan çalıştırılmaz.
+- `s3:DeleteObject` yoktur (frontend deploy'u hiçbir şey silmez, `videolar/` korunur); deploy bucket'ında yalnızca `backend/*` altına yazar.
+- Diğer izinler: site bucket'ına yükleme, bu dağıtımda invalidation, bu instance'a `AWS-RunShellScript` ile SSM komutu, yalnızca `/watchparty/infra-outputs` parametresini okuma.
+- Kontrol: `aws iam simulate-principal-policy --policy-source-arn <rol> --action-names s3:GetObject s3:DeleteObject --resource-arns arn:aws:s3:::watchparty-tfstate-8b2f65c1/watchparty/terraform.tfstate` hepsi `implicitDeny` dönmeli.
+
+Lokal deploy aynen çalışmaya devam eder (`deploy\deploy-*.ps1`, varsayılan `-Profile watchparty`, çıktılar `terraform output`'tan). `deploy/common.ps1` testi: `powershell -NoProfile -File deploy/tests/common.test.ps1`.
+
 ## İzleme ve alarmlar
 
 `infra/monitoring.tf` kurar; bildirimler SNS üzerinden `infra/terraform.tfvars` içindeki `alert_email` adresine gider (dosya gitignore'da; yeni makinede `alert_email = "..."` satırıyla oluşturun). AWS'nin gönderdiği abonelik onay e-postasındaki linke tıklanmadan bildirim gelmez.
