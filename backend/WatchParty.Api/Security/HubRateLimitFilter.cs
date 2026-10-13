@@ -11,7 +11,7 @@ public class HubRateLimitFilter(ConnectionCounter counter, IOptions<SecurityOpti
     private const string PlaybackKey = "rl:playback";
     private const string OtherKey = "rl:other";
 
-    private static readonly HashSet<string> PlaybackMethods = ["SetMedia", "Play", "Pause", "Seek", "SetControlMode"];
+    private static readonly HashSet<string> PlaybackMethods = ["SetMedia", "Play", "Pause", "Seek", "SetControlMode", "SetSubtitle"];
 
     public async Task OnConnectedAsync(HubLifetimeContext context, Func<HubLifetimeContext, Task> next)
     {

@@ -59,12 +59,40 @@ public class LobbyHub(ILobbyStore store) : Hub
         if (MediaValidator.Validate(type, id) is { } error)
             throw new HubException(error);
 
-        return Update(s => s with { MediaType = type, MediaId = id, IsPlaying = false, PositionSec = 0 });
+        return Update(s => s with { MediaType = type, MediaId = id, IsPlaying = false, PositionSec = 0, SubtitleUrl = null });
     }
 
     public Task Play(double positionSec) => Update(s => s with { IsPlaying = true, PositionSec = ValidPosition(positionSec) });
     public Task Pause(double positionSec) => Update(s => s with { IsPlaying = false, PositionSec = ValidPosition(positionSec) });
     public Task Seek(double positionSec) => Update(s => s with { PositionSec = ValidPosition(positionSec) });
+
+    public async Task SetSubtitle(string? url)
+    {
+        // Boş değer altyazıyı kaldırır.
+        if (string.IsNullOrEmpty(url))
+            url = null;
+        else if (MediaValidator.ValidateSubtitle(url) is { } error)
+            throw new HubException(error);
+
+        var lobby = CurrentLobby() ?? throw new HubException("Önce bir lobiye katıl");
+
+        PlaybackState next;
+        lock (lobby.Gate)
+        {
+            if (lobby.HostOnlyControl && !IsHost(lobby))
+                throw new HubException("Sadece host kontrol edebilir");
+            if (lobby.Playback.MediaId is null)
+                throw new HubException("Önce bir medya seç");
+            if (lobby.Playback.MediaType != "file")
+                throw new HubException("Altyazı yalnızca MP4 videolarda kullanılabilir");
+
+            // Konum ve UpdatedAt değişmez: aksi halde oynarken herkes geri atlardı.
+            next = lobby.Playback with { SubtitleUrl = url };
+            lobby.Playback = next;
+        }
+
+        await Clients.Group(lobby.Code).SendAsync("PlaybackUpdated", next);
+    }
 
     public async Task SetControlMode(bool hostOnly)
     {
