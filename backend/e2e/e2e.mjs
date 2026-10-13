@@ -144,7 +144,7 @@ const w1 = bh.ev.playback.at(-1);
 ok(w1?.waitingFor?.includes(ba.conn.connectionId), "waitingFor contains the buffering client's id");
 await sleep(300);
 const w2 = bh.ev.playback.at(-1);
-ok(w1 === w2 && w1.positionSec >= 10 && w1.isPlaying, "position frozen while waiting (no new broadcast)");
+ok(w2.positionSec === w1.positionSec && w2.updatedAt === w1.updatedAt && w1.positionSec >= 10 && w1.isPlaying, "position frozen while waiting (same positionSec and updatedAt)");
 ok((await err(ba.conn.invoke("SkipWaiting")))?.includes("Sadece host"), "SkipWaiting by non-host rejected in host-only mode");
 await ba.conn.invoke("ReportBuffering", false);
 await sleep(300);
