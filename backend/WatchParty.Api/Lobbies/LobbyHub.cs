@@ -98,6 +98,17 @@ public class LobbyHub(ILobbyStore store) : Hub
         await Clients.Group(lobby.Code).SendAsync("PlaybackUpdated", next);
     }
 
+    // "Yazıyor..." bildirimi. Lobide değilse sessizce yok sayılır; takma ad istemciden değil
+    // sunucudaki katılımcı kaydından alınır. Çağıran hariç lobiye iletilir.
+    public async Task Typing()
+    {
+        var lobby = CurrentLobby();
+        if (lobby is null || !lobby.Participants.TryGetValue(Context.ConnectionId, out var me))
+            return;
+
+        await Clients.OthersInGroup(lobby.Code).SendAsync("UserTyping", Context.ConnectionId, me.Nickname);
+    }
+
     // İstemcinin otomatik "takıldım / yetiştim" bildirimi. Kullanıcıya hata göstermemek için
     // hiçbir durumda HubException fırlatmaz; uygun değilse sessizce yok sayar. Host-only modda da kabul edilir.
     public async Task ReportBuffering(bool buffering)

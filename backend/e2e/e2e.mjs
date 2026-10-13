@@ -6,13 +6,14 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function client(name) {
   const conn = new signalR.HubConnectionBuilder().withUrl(BASE + "/hubs/lobby").configureLogging(signalR.LogLevel.None).build();
-  const ev = { participants: [], playback: [], mode: [], chat: [], history: [], host: [] };
+  const ev = { participants: [], playback: [], mode: [], chat: [], history: [], host: [], typing: [] };
   conn.on("ParticipantsChanged", l => ev.participants.push(l));
   conn.on("PlaybackUpdated", s => ev.playback.push(s));
   conn.on("ControlModeChanged", m => ev.mode.push(m));
   conn.on("ChatMessage", m => ev.chat.push(m));
   conn.on("ChatHistory", h => ev.history.push(h));
   conn.on("HostChanged", n => ev.host.push(n));
+  conn.on("UserTyping", (id, nick) => ev.typing.push({ id, nick }));
   await conn.start();
   return { conn, ev, name };
 }
@@ -126,6 +127,17 @@ await sh.conn.invoke("SetMedia", "file", "https://example.com/b.mp4");
 await sleep(200);
 ok(sg.ev.playback.at(-1)?.subtitleUrl === null, "SetMedia resets subtitle");
 for (const c of [sh, sg, sl]) await c.conn.stop();
+
+// yazıyor bildirimi
+const { code: cTyp } = await (await create({ clientId: "h5" })).json();
+const ta = await client("Yazan"), tb = await client("Izleyen");
+const tar = await ta.conn.invoke("JoinLobby", cTyp, "Yazan", "h5");
+await tb.conn.invoke("JoinLobby", cTyp, "Izleyen", "g5");
+await ta.conn.invoke("Typing");
+await sleep(300);
+ok(tb.ev.typing.length === 1 && tb.ev.typing[0].id === tar.selfId && tb.ev.typing[0].nick === "Yazan", "Typing -> other client gets UserTyping with caller id and server nickname");
+ok(ta.ev.typing.length === 0, "Typing is not echoed to caller");
+for (const c of [ta, tb]) await c.conn.stop();
 
 // takılana göre bekleme (host-only lobide; ReportBuffering kontrol eylemi değil)
 const { code: c5 } = await (await create({ clientId: "h5", hostOnlyControl: true })).json();

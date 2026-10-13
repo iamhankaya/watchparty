@@ -85,6 +85,19 @@ src/
 - Yerel geliştirmede yalnızca `frontend/public` içindeki dosyalar aynı alandadır.
 - Kişisel ayar: **CC** düğmesi altyazıyı bu izleyici için açar/kapar (`localStorage` `wp:subtitles`, varsayılan açık); herkesin ekranını etkilemez.
 
+## Sohbet bildirimi ve "yazıyor…"
+
+- Ses: başkasının **yeni** mesajı gelince ve mesaj görünmüyorken (`document.hidden`, pencere odakta değil ya da tam ekranda sohbet kapalı)
+  Web Audio ile üretilen kısa bir "tık" çalar (ses dosyası yok). Kendi mesajın ve katılırken gelen sohbet geçmişi için çalmaz;
+  2 sn içinde en fazla bir ses. Sohbet başlığındaki zil düğmesi kişiseldir (`localStorage` `wp:chatSound`, varsayılan açık).
+  Tarayıcı ses çalmaya izin vermezse sessiz kalır.
+- Sekme sayacı: sayfa gizliyken ya da odakta değilken gelen başkalarının mesajları sayılır, başlık `(<n>) <özgün başlık>` olur;
+  sayfa görünür ve odakta olunca sıfırlanır. Ses kapalıyken de çalışır. Karar fonksiyonları `lib/notify.ts`'te.
+- "Yazıyor": sohbet kutusunda metin değişince en fazla 3 sn'de bir sunucuya `Typing()` gider (boş kutuda gönderilmez; hata yutulur).
+  Sunucu durum tutmaz, çağıranın bağlantı kimliği ve takma adıyla `UserTyping` olayını diğerlerine iletir (`other` rate limit kovası).
+  İstemci (`lib/typing.ts` `TypingTracker`) bir kişiyi son bildirimden 5 sn sonra, o kişiden mesaj gelince ya da katılımcı listesinden çıkınca kaldırır.
+  Metin: 1 kişi "<ad> yazıyor…", 2 kişi "<ad1> ve <ad2> yazıyor…", 3 ve üstü "<n> kişi yazıyor…".
+
 ## Bilinen sınırlar
 
 - Backend medya id'sini en fazla 200 karakter kabul ediyor; çok uzun (ör. imzalı) film URL'leri reddedilir.
