@@ -140,7 +140,22 @@ Anahtar yenileme: yeni anahtarı aynı şekilde oluşturup secret'lara yazın, b
 - Terraform state bucket'ına (`watchparty-tfstate-*`) hiçbir izni yoktur (state origin secret'ı içerir); `terraform apply` CI'dan çalıştırılmaz.
 - `s3:DeleteObject` yoktur (frontend deploy'u hiçbir şey silmez, `videolar/` korunur); deploy bucket'ında yalnızca `backend/*` altına yazar.
 - Diğer izinler: site bucket'ına yükleme, bu dağıtımda invalidation, bu instance'a `AWS-RunShellScript` ile SSM komutu, yalnızca `/watchparty/infra-outputs` parametresini okuma.
-- Kontrol: `aws iam simulate-principal-policy --policy-source-arn arn:aws:iam::<hesap>:user/watchparty-github-deploy --action-names s3:GetObject s3:DeleteObject --resource-arns arn:aws:s3:::watchparty-tfstate-8b2f65c1/watchparty/terraform.tfstate` hepsi `implicitDeny` dönmeli.
+- Kontrol: kullanıcının kendi politikası IAM simülatörüyle denenir. `simulate-principal-policy` bu hesapta kullanılamaz: AWS'nin yönettiği organizasyon kuralları yüzünden yönetici dahil her işlemi `explicitDeny` gösterir. Bunun yerine politika `simulate-custom-policy`'ye verilir (her kontrol ayrı çağrı; birden fazla kaynak verilince sonuçlar birleşir). İlk üç satır `implicitDeny`, sonuncusu `allowed` dönmeli:
+
+  ```powershell
+  $pol = (aws iam get-user-policy --user-name watchparty-github-deploy --policy-name deploy --profile watchparty --query PolicyDocument --output json) -join "`n"
+  $req = Join-Path $env:TEMP "wp-sim.json"
+  foreach ($c in @(
+      @("s3:GetObject",    "arn:aws:s3:::watchparty-tfstate-8b2f65c1/watchparty/terraform.tfstate"),
+      @("s3:ListBucket",   "arn:aws:s3:::watchparty-tfstate-8b2f65c1"),
+      @("s3:DeleteObject", "arn:aws:s3:::watchparty-site-b554977f/index.html"),
+      @("s3:PutObject",    "arn:aws:s3:::watchparty-site-b554977f/index.html"))) {
+    @{ PolicyInputList = @($pol); ActionNames = @($c[0]); ResourceArns = @($c[1]) } | ConvertTo-Json | Set-Content -Encoding ascii $req
+    $d = aws iam simulate-custom-policy --cli-input-json "file://$req" --profile watchparty --query "EvaluationResults[0].EvalDecision" --output text
+    "{0,-16} {1,-14} {2}" -f $c[0], $d, $c[1]
+  }
+  Remove-Item $req
+  ```
 
 Lokal deploy aynen çalışmaya devam eder (`deploy\deploy-*.ps1`, varsayılan `-Profile watchparty`, çıktılar `terraform output`'tan). `deploy/common.ps1` testi: `powershell -NoProfile -File deploy/tests/common.test.ps1`.
 
