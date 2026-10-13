@@ -30,7 +30,7 @@ output "origin_domain" {
   value       = aws_eip.api.public_dns
 }
 
-output "github_deploy_role_arn" {
-  description = "GitHub Actions'ın üstleneceği deploy rolü (repo değişkeni AWS_DEPLOY_ROLE_ARN)"
-  value       = aws_iam_role.github_deploy.arn
+output "github_deploy_user" {
+  description = "GitHub Actions'ın kullandığı deploy kullanıcısı (access key'i GitHub secret'larında)"
+  value       = aws_iam_user.github_deploy.name
 }

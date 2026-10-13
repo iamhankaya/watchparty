@@ -26,9 +26,3 @@ variable "alert_email" {
   description = "Alarm bildirimlerinin gideceği e-posta (infra/terraform.tfvars içinde verilir; repoya girmez)"
   type        = string
 }
-
-variable "github_repo" {
-  description = "Deploy rolünü üstlenebilecek GitHub reposu (sahip/ad); yalnızca master dalı kabul edilir"
-  type        = string
-  default     = "iamhankaya/watchparty"
-}
