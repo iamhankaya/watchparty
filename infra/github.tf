@@ -42,13 +42,13 @@ data "aws_iam_policy_document" "github_deploy" {
     resources = [aws_s3_bucket.site.arn]
   }
   statement {
-    actions   = ["s3:PutObject", "s3:GetObject"]
+    actions   = ["s3:PutObject", "s3:GetObject", "s3:AbortMultipartUpload"]
     resources = ["${aws_s3_bucket.site.arn}/*"]
   }
 
   # Backend: yayın paketi yalnızca backend/ altına yüklenir.
   statement {
-    actions   = ["s3:PutObject"]
+    actions   = ["s3:PutObject", "s3:AbortMultipartUpload"]
     resources = ["${aws_s3_bucket.deploy.arn}/backend/*"]
   }
 

@@ -107,7 +107,7 @@ Frontend için rollback script'i yok; önceki commit'e geçip (git checkout) `de
 
 ## GitHub Actions (CI ve deploy)
 
-**CI** (`.github/workflows/ci.yml`) her push ve PR'da AWS'ye erişmeden dört işi paralel koşar: `backend` (`dotnet test backend/WatchParty.slnx`), `frontend` (`npm ci`, `npm test`, `npm run build`), `infra` (`terraform fmt -check`, `init -backend=false`, `validate`; `infra/tests` Node testleri; `deploy/tests/remote-deploy.test.sh`) ve `downloader` (`python -m unittest`). Aynı daldaki eski koşu yeni push gelince iptal edilir.
+**CI** (`.github/workflows/ci.yml`) her push ve PR'da AWS'ye erişmeden dört işi paralel koşar: `backend` (`dotnet test backend/WatchParty.slnx`), `frontend` (`npm ci`, `npm test`, `npm run build`), `infra` (`terraform fmt -check`, `init -backend=false`, `validate`; `infra/tests` Node testleri; `deploy/tests/remote-deploy.test.sh`; `pwsh -NoProfile -File deploy/tests/common.test.ps1`) ve `downloader` (`python -m unittest`). Aynı daldaki eski koşu yeni push gelince iptal edilir.
 
 **Deploy** (`.github/workflows/deploy.yml`) yalnızca elle başlar: GitHub → Actions → Deploy → Run workflow → `hedef` (`frontend` | `backend` | `ikisi`, varsayılan `frontend`). Yalnızca `master`'dan çalışır; sıra her zaman önce backend. İş `windows-latest` üzerinde mevcut `deploy\deploy-backend.ps1 -Profile ""` / `deploy\deploy-frontend.ps1 -Profile ""` script'lerini çalıştırır, ardından canlı smoke testini koşar. Aynı anda tek deploy çalışır. Backend'deki otomatik geri dönüş (sağlık kontrolü) CI'da da aynen geçerlidir.
 
