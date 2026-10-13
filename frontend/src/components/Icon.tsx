@@ -60,7 +60,20 @@ const PATHS = {
       <path d="M10.5 10.2a2.2 2.2 0 1 0 0 3.6M17 10.2a2.2 2.2 0 1 0 0 3.6" />
     </>
   ),
-  crown: <path d="M4 17.5h16M4.5 15l-1-8.5 5 4L12 5l3.5 5.5 5-4-1 8.5z" />,
+  bell: (
+    <>
+      <path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z" />
+      <path d="M10 20.5a2.2 2.2 0 0 0 4 0" />
+    </>
+  ),
+  bellOff: (
+    <>
+      <path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z" />
+      <path d="M10 20.5a2.2 2.2 0 0 0 4 0" />
+      <path d="M4 4l16 16" />
+    </>
+  ),
+  crown:<path d="M4 17.5h16M4.5 15l-1-8.5 5 4L12 5l3.5 5.5 5-4-1 8.5z" />,
 };
 
 export type IconName = keyof typeof PATHS;
