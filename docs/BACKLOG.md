@@ -5,9 +5,7 @@ Yapılacaklar, önem sırasıyla değil gruplar halinde. Bir madde ele alınınc
 ## Deploy ve altyapı
 
 - **Alan adı + ACM sertifikası.** Şu an `*.cloudfront.net`. Eklenince CloudFront → EC2 trafiği de HTTPS'e alınmalı (origin secret şu an EC2'ye düz HTTP ile gidiyor; asıl koruma güvenlik grubu).
-- **Videolar için ayrı bucket.** `tools/downloader` şimdilik site bucket'ına `videolar/` altına yüklüyor. Ayrı bir private video bucket'ı (OAC) ve CloudFront'ta `/videolar/*` için ayrı behavior eklenmeli: site dosyalarıyla karışmaz, yaşam döngüsü kuralıyla eski videolar otomatik silinebilir, deploy yetkileri ayrılır. `terraform apply` gerektirir.
 - **Log toplama:** uygulama logları şu an yalnızca sunucudaki journald'da (SSM ile okunuyor); CloudWatch Logs'a gönderilmiyor.
-- **Video bucket'ına taşıma (beklemede).** Kod `video-bucket` dalında hazır ve incelendi (spec/plan: `docs/superpowers/specs/2026-10-13-video-bucket.md`). Canlıya alma spec'in 2. bölümündeki sırayla yapılır; dal `master`'a ancak taşımanın son adımında girer (önce girerse ilk tam `terraform apply` `/videolar/*`'ı boş bucket'a çevirir). `master`'la `infra/github.tf` ve `deploy/README.md`'de küçük çakışmalar var.
 - **GitHub deploy'unda OIDC'ye geçiş.** Hesap Free Tier'da olduğu için (AWS'nin SCP'si `iam:*Provider*`'ı yasaklıyor) deploy kalıcı access key'le yapılıyor. Hesap Paid Plan'a yükseltilince (en geç hesap 6 ayını doldurunca zorunlu) `infra/github.tf`'te OIDC sağlayıcısı + `master`'a güvenen rol kurulmalı, iş akışı `role-to-assume`'a dönmeli, kullanıcı ve anahtarı silinmeli. Tasarım: `docs/superpowers/specs/2026-10-13-ci-cd.md` (git geçmişinde OIDC hali).
 - **Dar yetkili IAM.** `watchparty-deploy` kullanıcısı şimdilik `AdministratorAccess`.
 - **Release klasörü sahipliği.** `/opt/watchparty` ve release'ler uygulamanın kendi kullanıcısına ait; `root:root` + salt okunur daha güvenli (`user_data.sh.tftpl` ve `remote-deploy.sh` `WP_CHOWN`).

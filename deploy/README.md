@@ -42,7 +42,9 @@ terraform -chdir=infra init
 terraform -chdir=infra apply
 ```
 
-Çıktılar (`cloudfront_domain`, `distribution_id`, `site_bucket`, `deploy_bucket`, `instance_id`, `origin_domain`) script'ler tarafından `terraform output -json` ile okunur. Sunucu ilk açılışta .NET runtime'ı, `watchparty` kullanıcısını, ortam dosyasını ve systemd unit'ini kurar; ilk deploy'a kadar servis başlamaz.
+Çıktılar (`cloudfront_domain`, `distribution_id`, `site_bucket`, `video_bucket`, `deploy_bucket`, `instance_id`, `origin_domain`) script'ler tarafından `terraform output -json` ile okunur. Sunucu ilk açılışta .NET runtime'ı, `watchparty` kullanıcısını, ortam dosyasını ve systemd unit'ini kurar; ilk deploy'a kadar servis başlamaz.
+
+**Videolar.** `tools/downloader` videoları ayrı private `video_bucket`'a yükler (`--s3-bucket (terraform -chdir=..\..\infra output -raw video_bucket)`, `tools/downloader` dizininden çalıştırılırken); CloudFront `/videolar/*` isteklerini oradan verir, link biçimi `https://<cloudfront>/videolar/...` aynı kalır. Yaşam döngüsü: nesneler 30 gün sonra otomatik silinir, yarım çok parçalı yüklemeler 2 günde iptal edilir; CloudFront'taki önbellek en fazla 1 gündür. `--gizli` linkleri tahmin edilemez klasörde durur; elle silmek için `aws s3 rm s3://<video_bucket>/videolar/<klasör>/ --recursive`, hemen kalkması gerekiyorsa ayrıca invalidation (aksi halde en geç 1 gün sonra edge'den düşer). CI deploy rolünün bu bucket'a izni yoktur.
 
 **İlk deploy'dan önce cloud-init'i bekleyin.** Sunucu kurulumu (`user_data`) `apply` bittikten sonra birkaç dakika daha sürer. SSM oturumu açın:
 
@@ -138,7 +140,7 @@ Anahtar yenileme: yeni anahtarı aynı şekilde oluşturup secret'lara yazın, b
 
 - Secret'lar yalnızca bu private repodaki iş akışlarına açıktır; deploy iş akışı `master` dışından başlatılırsa ilk adımda durur. Anahtar sızarsa: `aws iam delete-access-key` ile hemen silin, yenisini oluşturun.
 - Terraform state bucket'ına (`watchparty-tfstate-*`) hiçbir izni yoktur (state origin secret'ı içerir); `terraform apply` CI'dan çalıştırılmaz.
-- `s3:DeleteObject` yoktur (frontend deploy'u hiçbir şey silmez, `videolar/` korunur); deploy bucket'ında yalnızca `backend/*` altına yazar.
+- `s3:DeleteObject` yoktur (frontend deploy'u hiçbir şey silmez; videolar ayrı bucket'tadır ve bu rol ona erişemez); deploy bucket'ında yalnızca `backend/*` altına yazar.
 - Diğer izinler: site bucket'ına yükleme, bu dağıtımda invalidation, bu instance'a `AWS-RunShellScript` ile SSM komutu, yalnızca `/watchparty/infra-outputs` parametresini okuma.
 - Kontrol: kullanıcının kendi politikası IAM simülatörüyle denenir. `simulate-principal-policy` bu hesapta kullanılamaz: AWS'nin yönettiği organizasyon kuralları yüzünden yönetici dahil her işlemi `explicitDeny` gösterir. Bunun yerine politika `simulate-custom-policy`'ye verilir (her kontrol ayrı çağrı; birden fazla kaynak verilince sonuçlar birleşir). İlk üç satır `implicitDeny`, sonuncusu `allowed` dönmeli:
 

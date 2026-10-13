@@ -34,3 +34,8 @@ output "github_deploy_user" {
   description = "GitHub Actions'ın kullandığı deploy kullanıcısı (access key'i GitHub secret'larında)"
   value       = aws_iam_user.github_deploy.name
 }
+
+output "video_bucket" {
+  description = "Videoların yüklendiği bucket (30 gün sonra silinir; /videolar/* buradan servis edilir)"
+  value       = aws_s3_bucket.videos.bucket
+}
