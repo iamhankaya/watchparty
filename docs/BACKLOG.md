@@ -2,10 +2,6 @@
 
 Yapılacaklar, önem sırasıyla değil gruplar halinde. Bir madde ele alınınca buradan silinir.
 
-## Arayüz
-
-- **Mobilde tam ekranda yatay mod.** Android'de tam ekrana geçince ekran dik kalıyor. Öneri: `LobbyPage.tsx` `toggleFullscreen` içinde, dokunmatik cihazda (`pointer: coarse`) tam ekran başarılı olunca `screen.orientation.lock("landscape")` (hata sessizce yok sayılır), tam ekrandan çıkınca `screen.orientation.unlock()`. iPhone Safari yön kilidini desteklemez; orada etkisi olmaz.
-
 ## Deploy ve altyapı
 
 - **Alan adı + ACM sertifikası.** Şu an `*.cloudfront.net`. Eklenince CloudFront → EC2 trafiği de HTTPS'e alınmalı (origin secret şu an EC2'ye düz HTTP ile gidiyor; asıl koruma güvenlik grubu).

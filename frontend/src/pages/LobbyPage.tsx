@@ -4,6 +4,7 @@ import { ServerClock } from "../lib/clock";
 import { createLobbyConnection, type LobbyConnection } from "../lib/connection";
 import { describeConnectionError, errorMessage } from "../lib/errors";
 import { getClientId, getNickname, getVolume, saveNickname, saveVolume, type VolumeSetting } from "../lib/identity";
+import { lockLandscape, unlockOrientation } from "../lib/orientation";
 import { SyncEngine } from "../lib/sync";
 import {
   expectedPosition,
@@ -188,15 +189,23 @@ export function LobbyPage({ code, navigate }: Props) {
   }, [volume]);
 
   // Tam ekran: oynatıcı, kontroller ve (açıksa) sağda sohbet birlikte tam ekrana geçer.
+  // Mobilde ekran yataya kilitlenir; tam ekrandan nasıl çıkılırsa çıkılsın (geri tuşu dahil) kilit kalkar.
   useEffect(() => {
-    const onChange = () => setIsFullscreen(document.fullscreenElement === theaterRef.current && !!theaterRef.current);
+    const onChange = () => {
+      setIsFullscreen(document.fullscreenElement === theaterRef.current && !!theaterRef.current);
+      if (!document.fullscreenElement) unlockOrientation();
+    };
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
 
   const toggleFullscreen = useCallback(() => {
     if (document.fullscreenElement) void document.exitFullscreen();
-    else theaterRef.current?.requestFullscreen().catch(() => setToast({ text: "Tarayıcı tam ekrana izin vermedi.", kind: "error" }));
+    else
+      theaterRef.current
+        ?.requestFullscreen()
+        .then(() => lockLandscape())
+        .catch(() => setToast({ text: "Tarayıcı tam ekrana izin vermedi.", kind: "error" }));
   }, []);
 
   function handleNicknameSubmit(e: FormEvent) {
