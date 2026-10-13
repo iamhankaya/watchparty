@@ -127,6 +127,36 @@ await sleep(200);
 ok(sg.ev.playback.at(-1)?.subtitleUrl === null, "SetMedia resets subtitle");
 for (const c of [sh, sg, sl]) await c.conn.stop();
 
+// takılana göre bekleme (host-only lobide; ReportBuffering kontrol eylemi değil)
+const { code: c5 } = await (await create({ clientId: "h5", hostOnlyControl: true })).json();
+const bh = await client("Host"), ba = await client("Ayse");
+await bh.conn.invoke("JoinLobby", c5, "Host", "h5");
+await ba.conn.invoke("JoinLobby", c5, "Ayse", "g5");
+await bh.conn.invoke("SetMedia", "file", "https://example.com/a.mp4");
+ok((await err(ba.conn.invoke("ReportBuffering", true))) === null, "ReportBuffering when paused: no error");
+await sleep(200);
+ok(bh.ev.playback.at(-1)?.waitingFor?.length === 0, "ReportBuffering when paused ignored");
+await bh.conn.invoke("Play", 10);
+await sleep(200);
+ok((await err(ba.conn.invoke("ReportBuffering", true))) === null, "non-host ReportBuffering accepted in host-only mode");
+await sleep(300);
+const w1 = bh.ev.playback.at(-1);
+ok(w1?.waitingFor?.includes(ba.conn.connectionId), "waitingFor contains the buffering client's id");
+await sleep(300);
+const w2 = bh.ev.playback.at(-1);
+ok(w2.positionSec === w1.positionSec && w2.updatedAt === w1.updatedAt && w1.positionSec >= 10 && w1.isPlaying, "position frozen while waiting (same positionSec and updatedAt)");
+ok((await err(ba.conn.invoke("SkipWaiting")))?.includes("Sadece host"), "SkipWaiting by non-host rejected in host-only mode");
+await ba.conn.invoke("ReportBuffering", false);
+await sleep(300);
+const w3 = bh.ev.playback.at(-1);
+ok(w3?.waitingFor?.length === 0 && w3.positionSec === w1.positionSec && w3.updatedAt >= w1.updatedAt, "ReportBuffering(false) resumes from frozen position");
+await ba.conn.invoke("ReportBuffering", true);
+await sleep(200);
+await bh.conn.invoke("SkipWaiting");
+await sleep(200);
+ok(bh.ev.playback.at(-1)?.waitingFor?.length === 0, "host SkipWaiting clears the wait list");
+for (const c of [bh, ba]) await c.conn.stop();
+
 // limit 20
 const { code: c3 } = await (await create({ clientId: "h3" })).json();
 const many = [];
