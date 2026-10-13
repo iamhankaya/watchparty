@@ -23,6 +23,16 @@ function subtitleProblem(url: string): string | null {
   return null;
 }
 
+// Başka alandaki https adresi: CSP yüzünden açılamaz, ama göndermeyi engellemeyiz (yalnızca ipucu)
+function isCrossOrigin(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" && u.origin !== location.origin;
+  } catch {
+    return false;
+  }
+}
+
 export function MediaPicker({ disabled, playback, onSetMedia, onSetSubtitle }: Props) {
   const [value, setValue] = useState("");
   const [subtitle, setSubtitle] = useState("");
@@ -102,6 +112,11 @@ export function MediaPicker({ disabled, playback, onSetMedia, onSetSubtitle }: P
           </button>
         )}
       </div>
+      {isCrossOrigin(subtitle.trim()) && (
+        <p className="muted small">
+          Bu adres başka bir sitede; altyazı yalnızca bu sitedeki dosyalardan açılabiliyor.
+        </p>
+      )}
       {problem && <p className="error small">{problem}</p>}
     </form>
   );

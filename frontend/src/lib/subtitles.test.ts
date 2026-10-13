@@ -10,6 +10,16 @@ describe("decodeSubtitle", () => {
     expect(decodeSubtitle(buf([0xef, 0xbb, 0xbf, 0x61, 0x62]))).toBe("ab"));
   test("geçersiz UTF-8 ise Windows-1254'e düşer", () =>
     expect(decodeSubtitle(buf([0xf0, 0xfc, 0xfe, 0xfd, 0xf6, 0xe7]))).toBe("ğüşıöç"));
+  const utf16 = (s: string, le: boolean) => {
+    const out = [le ? 0xff : 0xfe, le ? 0xfe : 0xff];
+    for (const ch of s) {
+      const c = ch.charCodeAt(0);
+      out.push(...(le ? [c & 0xff, c >> 8] : [c >> 8, c & 0xff]));
+    }
+    return buf(out);
+  };
+  test("UTF-16 LE (BOM'lu) çözer", () => expect(decodeSubtitle(utf16("ğüşıöç", true))).toBe("ğüşıöç"));
+  test("UTF-16 BE (BOM'lu) çözer", () => expect(decodeSubtitle(utf16("ğüşıöç", false))).toBe("ğüşıöç"));
 });
 
 describe("parseSubtitles", () => {
