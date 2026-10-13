@@ -36,6 +36,7 @@ src/
     sync.ts         SyncEngine: sunucu durumunu oynatıcıya uygular
     identity.ts     localStorage'da clientId ve takma ad
     media.ts        YouTube linki / MP4 URL ayrıştırma
+    subtitles.ts    altyazı kodlama tespiti (decodeSubtitle) ve SRT/VTT ayrıştırma (parseSubtitles)
     theme.ts        koyu/açık tema (localStorage, yoksa sistem tercihi)
   players/          Player arayüzü, YouTubePlayer (IFrame API), FilePlayer (<video>)
   components/       Kontroller, medya seçici, katılımcılar, sohbet, ikonlar,
@@ -54,6 +55,18 @@ src/
   sadece bizim butonlardan sunucuya gider; oynatıcı olayları hiç sunucuya geri gönderilmez.
   Bu, "kodla yapılan seek'in tekrar herkese yayılması" döngüsünü tamamen engeller.
 - Tarayıcı otomatik oynatmayı engellerse oynatıcının üstünde "Oynatmayı başlatmak için tıkla" çıkar.
+
+## Altyazı
+
+- Sadece MP4 için; YouTube'un kendi altyazı menüsü var. Altyazı linki (`.vtt` / `.srt`) lobi genelinde ortaktır:
+  `PlaybackState.subtitleUrl` ile sunucudan gelir, host-only modda yalnızca host değiştirir, yeni video seçilince sıfırlanır.
+  Link `MediaPicker`'daki isteğe bağlı alandan (videoyla birlikte ya da sonradan) gönderilir.
+- `FilePlayer` dosyayı tarayıcıda `fetch` ile okur, `decodeSubtitle` ve `parseSubtitles` ile ayrıştırır, `video.addTextTrack("subtitles")` +
+  `VTTCue` ile ekler (`<track>`/blob URL yok: CSP `media-src` `blob:` içermiyor).
+- Kodlama: önce UTF-8 (`fatal`), olmazsa Windows-1254 (Türkçe SRT'lerin çoğu böyle); baştaki BOM atılır.
+- Aynı alan kısıtı: CSP `connect-src 'self'` olduğundan yalnızca sitenin kendi alanındaki dosyalar açılır (S3/CloudFront'a yüklenenler).
+  Başka alandaki link sunucuda kabul edilir ama tarayıcı "Altyazı yüklenemedi: yalnızca bu sitedeki dosyalar açılabiliyor" der; CSP gevşetilmez.
+- Kişisel ayar: **CC** düğmesi altyazıyı bu izleyici için açar/kapar (`localStorage` `wp:subtitles`, varsayılan açık); herkesin ekranını etkilemez.
 
 ## Bilinen sınırlar
 
