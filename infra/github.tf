@@ -36,7 +36,7 @@ resource "aws_iam_role" "github_deploy" {
 }
 
 data "aws_iam_policy_document" "github_deploy" {
-  # Frontend: dist/ içeriği site bucket'ına yüklenir; silme yetkisi yok (videolar/ korunur).
+  # Frontend: dist/ içeriği site bucket'ına yüklenir; silme yetkisi yok; videolar ayrı bir bucket'ta durur ve bu rol ona erişemez.
   statement {
     actions   = ["s3:ListBucket"]
     resources = [aws_s3_bucket.site.arn]

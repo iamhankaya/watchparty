@@ -69,7 +69,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "videos" {
 }
 
 # Edge önbelleği en fazla 1 gün: S3'te silinen video CloudFront'ta en geç 1 gün sonra erişilemez olur.
-# Nesneler max-age=31536000 ile yüklense de bu politika üst sınırı belirler.
+# Bu 1 günlük üst sınır yalnızca CloudFront edge'i için geçerlidir; tarayıcılar nesnenin
+# max-age=31536000, immutable başlığını olduğu gibi korur.
 resource "aws_cloudfront_cache_policy" "videos" {
   name        = "${var.project}-videos"
   comment     = "Videolar: en fazla 1 gun onbellek, cache key'de cerez/baslik/query yok"

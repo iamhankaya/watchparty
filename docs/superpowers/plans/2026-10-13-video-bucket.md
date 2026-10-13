@@ -61,6 +61,6 @@
 
 ## Canlıya alma (controller, ana çalışma ağacında, izleme bittikten sonra ve kullanıcı onayıyla)
 
-Spec 2. bölümdeki sıra birebir: listeleme → hedefli apply (yalnızca bucket, public access block, lifecycle; plan'da dağıtım görünürse dur) → sunucu tarafı kopya + boyut kontrolü → tam plan (ekleme + dağıtımda yerinde güncelleme, 0 destroy) ve apply → `Deployed` bekle → doğrulama (200 + `video/mp4`, Range 206, `/videolar/yok.mp4` 403, smoke 6/6) → site bucket'ındaki `videolar/` silinir.
+Spec 2. bölümdeki sıra birebir: listeleme → hedefli apply (yalnızca bucket, public access block, lifecycle; plan'da dağıtım görünürse dur) → sunucu tarafı kopya + boyut kontrolü → bucket policy'yi elle koy (`aws s3api put-bucket-policy`, spec 2. bölüm 4. adım) → tam plan (ekleme + dağıtımda yerinde güncelleme, 0 destroy) ve apply → `Deployed` bekle → doğrulama (200 + `video/mp4`, Range 206, `/videolar/yok.mp4` 403, smoke 6/6) → site bucket'ındaki `videolar/` silinir.
 
 Task 1 ve 2 ayrı dosyalara dokunur; paralel worktree'lerde yürütülür. CI/CD dalı (`ci-cd`) master'a girdikten sonra başlatılır (`infra/outputs.tf` iki planda da değişiyor).
