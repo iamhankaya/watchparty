@@ -59,3 +59,7 @@ export const saveVolume = (v: VolumeSetting) => write("wp:volume", JSON.stringif
 // Altyazı açık/kapalı kişiye özel; varsayılan açık.
 export const getSubtitlesOn = () => read("wp:subtitles") !== "false";
 export const saveSubtitlesOn = (on: boolean) => write("wp:subtitles", String(on));
+
+// Sohbet bildirim sesi kişiye özel; varsayılan açık.
+export const getChatSoundOn = () => read("wp:chatSound") !== "false";
+export const saveChatSoundOn = (on: boolean) => write("wp:chatSound", String(on));
