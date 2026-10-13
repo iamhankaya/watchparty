@@ -96,7 +96,7 @@ export function LobbyPage({ code, navigate }: Props) {
         setPhase("joining");
       }
 
-      const engine = new SyncEngine(clockRef.current, setBlocked);
+      const engine = new SyncEngine(clockRef.current, setBlocked, () => {});
       engineRef.current = engine;
       engine.start();
       engine.setPlayer(playerRef.current);

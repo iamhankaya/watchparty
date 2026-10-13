@@ -25,6 +25,16 @@ export function FilePlayer({ url, subtitleUrl, subtitlesOn, onPlayer, onError }:
     const video = videoRef.current;
     if (!video) return;
 
+    // `waiting` gelip henüz `playing` gelmediyse video veri bekliyordur (takılma).
+    let waiting = false;
+    const onWaiting = () => {
+      waiting = true;
+    };
+    const onResumed = () => {
+      waiting = false;
+    };
+    const resumeEvents = ["playing", "pause", "seeked", "emptied"] as const;
+
     const player: Player = {
       supportsRate: true,
       isReady: () => video.readyState >= HTMLMediaElement.HAVE_METADATA,
@@ -44,6 +54,8 @@ export function FilePlayer({ url, subtitleUrl, subtitlesOn, onPlayer, onError }:
       getTime: () => video.currentTime,
       getDuration: () => (Number.isFinite(video.duration) ? video.duration : 0),
       isPlaying: () => !video.paused && !video.ended,
+      isBuffering: () =>
+        !video.paused && (waiting || video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA),
       setRate: (rate) => {
         if (video.playbackRate !== rate) video.playbackRate = rate;
       },
@@ -55,10 +67,14 @@ export function FilePlayer({ url, subtitleUrl, subtitlesOn, onPlayer, onError }:
 
     const handleError = () => onError("Video yüklenemedi. URL'nin doğrudan bir MP4 dosyasına gittiğinden emin olun.");
     video.addEventListener("error", handleError);
+    video.addEventListener("waiting", onWaiting);
+    for (const e of resumeEvents) video.addEventListener(e, onResumed);
     onPlayer(player);
 
     return () => {
       video.removeEventListener("error", handleError);
+      video.removeEventListener("waiting", onWaiting);
+      for (const e of resumeEvents) video.removeEventListener(e, onResumed);
       onPlayer(null);
     };
   }, [url, onPlayer, onError]);

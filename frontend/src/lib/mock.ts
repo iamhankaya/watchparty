@@ -76,7 +76,7 @@ export const mockApi = {
       createdAt: new Date().toISOString(),
       hostClientId: clientId,
       hostOnlyControl,
-      playback: { mediaType: null, mediaId: null, isPlaying: false, positionSec: 0, updatedAt: Date.now(), subtitleUrl: null },
+      playback: { mediaType: null, mediaId: null, isPlaying: false, positionSec: 0, updatedAt: Date.now(), subtitleUrl: null, waitingFor: [] },
       chat: [],
     };
     save(lobbyKey(code), lobby);

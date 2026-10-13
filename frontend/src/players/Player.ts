@@ -12,6 +12,8 @@ export interface Player {
   getDuration(): number;
   /** Oynuyor veya oynamak için yükleniyor (buffering) mu? */
   isPlaying(): boolean;
+  /** Oynatılmak istenirken veri bekleniyor (takılma) mu? Yalnızca "takıldım" bildirimi için okunur. */
+  isBuffering(): boolean;
   /** Hızla sessiz yakalama sadece HTML5 video'da var; YouTube'da yalnızca seek kullanılır. */
   readonly supportsRate: boolean;
   setRate(rate: number): void;

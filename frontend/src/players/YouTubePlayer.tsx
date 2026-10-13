@@ -91,6 +91,7 @@ export function YouTubePlayer({ videoId, onPlayer, onError }: Props) {
         const s = yt?.getPlayerState();
         return s === 1 || s === 3;
       },
+      isBuffering: () => yt?.getPlayerState() === window.YT?.PlayerState.BUFFERING,
       setRate: () => {},
       setVolume: (volume, muted) => {
         yt?.setVolume(volume);
