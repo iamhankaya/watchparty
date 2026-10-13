@@ -1,6 +1,7 @@
 locals {
-  s3_origin_id  = "s3"
-  api_origin_id = "api"
+  s3_origin_id     = "s3"
+  api_origin_id    = "api"
+  videos_origin_id = "videos"
 
   # Spec ile birebir; değiştirirken frontend'in yüklediği kaynakları (YouTube, Google Fonts) kontrol edin.
   content_security_policy = "default-src 'self'; script-src 'self' https://www.youtube.com; frame-src https://www.youtube.com; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; media-src https:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
@@ -75,6 +76,13 @@ resource "aws_cloudfront_distribution" "main" {
     origin_access_control_id = aws_cloudfront_origin_access_control.site.id
   }
 
+  # Videolar: private video bucket'ı, aynı OAC ile.
+  origin {
+    origin_id                = local.videos_origin_id
+    domain_name              = aws_s3_bucket.videos.bucket_regional_domain_name
+    origin_access_control_id = aws_cloudfront_origin_access_control.site.id
+  }
+
   # Backend: EIP'nin public DNS'i, HTTP:80. Gizli header'ı taşımayan istekleri backend 403 ile reddeder.
   origin {
     origin_id   = local.api_origin_id
@@ -128,6 +136,18 @@ resource "aws_cloudfront_distribution" "main" {
     viewer_protocol_policy     = "redirect-to-https"
     cache_policy_id            = data.aws_cloudfront_cache_policy.caching_disabled.id
     origin_request_policy_id   = data.aws_cloudfront_origin_request_policy.all_viewer_except_host.id
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.security.id
+  }
+
+  # Videolar: SPA yönlendirmesi uygulanmaz; MP4 sıkıştırılmaz, edge önbelleği en fazla 1 gün.
+  ordered_cache_behavior {
+    path_pattern               = "/videolar/*"
+    target_origin_id           = local.videos_origin_id
+    allowed_methods            = ["GET", "HEAD"]
+    cached_methods             = ["GET", "HEAD"]
+    viewer_protocol_policy     = "redirect-to-https"
+    compress                   = false
+    cache_policy_id            = aws_cloudfront_cache_policy.videos.id
     response_headers_policy_id = aws_cloudfront_response_headers_policy.security.id
   }
 
