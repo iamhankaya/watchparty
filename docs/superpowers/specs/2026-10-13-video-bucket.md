@@ -32,10 +32,11 @@ Kaynak: 2026-10-13 brainstorming'i, `docs/BACKLOG.md`'deki "Videolar için ayrı
 
 1. Site bucket'ındaki `videolar/` içeriğinin listesi alınır.
 2. Önce yalnızca bucket kurulur, CloudFront'a dokunulmaz: `terraform apply -target=aws_s3_bucket.videos -target=aws_s3_bucket_public_access_block.videos -target=aws_s3_bucket_lifecycle_configuration.videos`. Bucket policy bu adımda **hedeflenmez**: dağıtımın ARN'sine bağlı olduğu için `-target` dağıtımın kendisini de (yeni behavior'la birlikte) güncellerdi. Plan çıktısında `aws_cloudfront_distribution.main` görünürse durulur.
-3. Nesneler yeni bucket'a **sunucu tarafında** kopyalanır: `aws s3 cp s3://<site>/videolar/ s3://<videos>/videolar/ --recursive` (Content-Type ve Cache-Control korunur; 2 GB'lık dosya ev bağlantısından geçmez). Kopyanın tamamlandığı `aws s3 ls` ile boyutlar karşılaştırılarak doğrulanır.
-4. Tam `terraform apply` (bucket policy, cache policy, origin, `/videolar/*` behavior). Policy dağıtım güncellemesinden saniyeler sonra oluşur; CloudFront'un yeni yapılandırmayı edge'lere yayması dakikalar sürdüğü için arada 403 görülmez. Video bu noktada iki bucket'ta da durduğu için CloudFront'un yayılması sırasında hangi origin'e gidilirse gidilsin link çalışır.
-5. Doğrulama (dağıtım durumu `Deployed` olduktan sonra): mevcut video linki `curl -sI` ile 200 ve `Content-Type: video/mp4` döner, yanıt yeni origin'den gelir (`x-cache` alanı ilk istekte `Miss from cloudfront`); `Range: bytes=0-99` isteği 206 döner; bir uydurma yol (`/videolar/yok.mp4`) 403 döner (OAC'li private bucket, liste izni yok); site (`/`, `/l/ABCDEF`) ve smoke testi etkilenmez.
-6. Site bucket'ındaki `videolar/` silinir. Yeni bucket'taki kopya taşıma günü başlayan 30 günlük ömre sahiptir.
+3. Nesneler yeni bucket'a **sunucu tarafında** kopyalanır: `aws s3 cp s3://<site>/videolar/ s3://<videos>/videolar/ --recursive --profile watchparty` (Content-Type ve Cache-Control korunur; 2 GB'lık dosya ev bağlantısından geçmez). Kopyanın tamamlandığı `aws s3 ls --profile watchparty` ile boyutlar karşılaştırılarak doğrulanır.
+4. Bucket policy elle konur: `aws s3api put-bucket-policy --bucket <videos> --policy file://policy.json --profile watchparty`. JSON `infra/videos.tf` ile aynıdır: `s3:GetObject` on `arn:aws:s3:::<videos>/*`, principal `Service: cloudfront.amazonaws.com`, koşul `StringEquals` `AWS:SourceArn` = dağıtımın ARN'si (`terraform -chdir=infra output` ya da `aws cloudfront get-distribution --profile watchparty`). Neden elle: `aws_s3_bucket_policy.videos` policy belgesi üzerinden dağıtıma bağlıdır ve Terraform policy'yi dağıtım `Deployed` olduktan sonra oluşturur; elle konmazsa yeni behavior yayılırken `/videolar/*` isteklerinde 403 penceresi açılır. Sonraki tam apply aynı içerikle üzerine yazar (plan'da policy için `create` ya da fark görünmesi beklenir, içerik aynı olduğundan zararsızdır).
+5. Tam `terraform apply` (bucket policy, cache policy, origin, `/videolar/*` behavior). Policy önceden konduğu için CloudFront yeni yapılandırmayı edge'lere yayarken 403 görülmez. Video bu noktada iki bucket'ta da durduğu için yayılma sırasında hangi origin'e gidilirse gidilsin link çalışır.
+6. Doğrulama (dağıtım durumu `Deployed` olduktan sonra): mevcut video linki `curl -sI` ile 200 ve `Content-Type: video/mp4` döner, yanıt yeni origin'den gelir (`x-cache` alanı ilk istekte `Miss from cloudfront`); `Range: bytes=0-99` isteği 206 döner; bir uydurma yol (`/videolar/yok.mp4`) 403 döner (OAC'li private bucket, liste izni yok); site (`/`, `/l/ABCDEF`) ve smoke testi etkilenmez.
+7. Site bucket'ındaki `videolar/` silinir (`aws s3 rm s3://<site>/videolar/ --recursive --profile watchparty`). Yeni bucket'taki kopya taşıma günü başlayan 30 günlük ömre sahiptir.
 
 ### 3. Belgeler
 
@@ -48,7 +49,7 @@ Kaynak: 2026-10-13 brainstorming'i, `docs/BACKLOG.md`'deki "Videolar için ayrı
 
 - `terraform fmt -check`, `validate`; `node --test "infra/tests/*.test.mjs"` (SPA function değişmez).
 - Tam `terraform plan` çıktısı 1. bölümdeki beklentiyle aynı (ekleme + dağıtımda yerinde güncelleme, 0 destroy).
-- 2. bölüm 5. adımdaki canlı kontroller; ardından smoke 6/6.
+- 2. bölüm 6. adımdaki canlı kontroller; ardından smoke 6/6.
 
 ## Kapsam dışı
 
