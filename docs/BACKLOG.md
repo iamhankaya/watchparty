@@ -16,6 +16,10 @@ Yapılacaklar, önem sırasıyla değil gruplar halinde. Bir madde ele alınınc
 
 ## Uygulama
 
+- **Oynatma durumu sürüm numarası.** Hub yayınları kilit dışında gönderildiği için iki değişiklik istemcilere ters sırada ulaşabilir (ör. bekleme başladı/bitti); istemci en fazla 10 sn'lik yeniden yayına kadar eski durumda kalır. `PlaybackState`'e artan bir `Version` eklenip istemcinin eskileri atması çözer.
+- **Bekleme küçükleri.** Geç fark edilen kopmadan sonra kişinin eski bağlantı kimliği 10 sn listede kalabiliyor ("hayalet" bekleme); `Lobby`'deki tekrar sayacı sözlükleri lobi ömrü boyunca temizlenmiyor; YouTube reklamları ya da otomatik oynatma engeli BUFFERING görünürse grup bekleyebilir (canlıda gözlenmedi).
+- **Sohbet küçükleri.** Yan paneldeki zil satırı mobilde ~40 px yer kaplıyor (sohbet formuna ya da köşeye taşınabilir); aynı takma adlı iki kişide "kendi mesajım" ayrımı takma ada dayanıyor.
+
 - Lobi şifresi / kişiyi atma gibi yetki özellikleri, host token.
 - Çok sunuculu çalışma için Redis (şu an tüm durum tek sunucunun belleğinde; her deploy açık lobileri düşürür).
 - Medya id'si 200 karakter sınırı: uzun (ör. imzalı) film URL'leri reddediliyor.
