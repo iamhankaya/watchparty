@@ -1,7 +1,8 @@
 /**
  * Backend olmadan geliştirme için sahte sunucu (npm run dev:mock).
  * Aynı tarayıcıdaki sekmeler localStorage + BroadcastChannel ile ortak bir "sunucu" paylaşır.
- * Hub'daki kurallar taklit edilir: 20 kişi sınırı, sadece-host modu, host devri, altyazı kuralları.
+ * Hub'daki kurallar taklit edilir: 20 kişi sınırı, sadece-host modu, host devri, altyazı kuralları,
+ * takılana göre bekleme (Lobby.StartWaiting/StopWaiting/ClearWaiting/ExpireWaits).
  */
 import type { LobbyConnection, LobbyEvents } from "./connection";
 import type { ChatMessage, JoinResult, MediaType, Participant, PlaybackState } from "./types";
@@ -14,6 +15,13 @@ interface MockLobby {
   hostOnlyControl: boolean;
   playback: PlaybackState;
   chat: ChatMessage[];
+  // Bekleme kayıtları (Lobby.cs ile aynı); eski localStorage verisinde olmayabilir.
+  /** Aktif beklemeler: bağlantı (sekme) kimliği -> başlangıç (ms). */
+  waits?: Record<string, number>;
+  /** Tekrar sayacı: clientId -> STRIKE_WINDOW içindeki bekleme başlangıçları (eskiden yeniye). */
+  strikes?: Record<string, number[]>;
+  /** Yok sayılma bildirildi: clientId -> pencerenin sonu (ms). */
+  ignoredUntil?: Record<string, number>;
 }
 
 interface Presence {
@@ -28,10 +36,15 @@ type Message =
   | { type: "playback"; code: string; state: PlaybackState }
   | { type: "control"; code: string; hostOnly: boolean }
   | { type: "host"; code: string; nickname: string }
-  | { type: "chat"; code: string; message: ChatMessage };
+  | { type: "chat"; code: string; message: ChatMessage }
+  | { type: "bufferingIgnored"; code: string; nickname: string };
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const PRESENCE_TIMEOUT = 6000;
+// Lobby.MaxWait, StrikeWindow, MaxStrikes ile aynı.
+const MAX_WAIT = 10_000;
+const STRIKE_WINDOW = 5 * 60_000;
+const MAX_STRIKES = 3;
 const lobbyKey = (code: string) => `wpmock:lobby:${code}`;
 const presenceKey = (code: string) => `wpmock:presence:${code}`;
 
@@ -76,7 +89,7 @@ export const mockApi = {
       createdAt: new Date().toISOString(),
       hostClientId: clientId,
       hostOnlyControl,
-      playback: { mediaType: null, mediaId: null, isPlaying: false, positionSec: 0, updatedAt: Date.now(), subtitleUrl: null },
+      playback: { mediaType: null, mediaId: null, isPlaying: false, positionSec: 0, updatedAt: Date.now(), subtitleUrl: null, waitingFor: [] },
       chat: [],
     };
     save(lobbyKey(code), lobby);
@@ -98,6 +111,7 @@ export class MockLobbyConnection implements LobbyConnection {
   private code: string | null = null;
   private clientId = "";
   private heartbeat: number | undefined;
+  private waitTimer: number | undefined;
 
   constructor(private events: LobbyEvents) {
     this.channel.onmessage = (e: MessageEvent<Message>) => this.receive(e.data);
@@ -117,6 +131,8 @@ export class MockLobbyConnection implements LobbyConnection {
         return this.events.hostChanged(msg.nickname);
       case "chat":
         return this.events.chatMessage(msg.message);
+      case "bufferingIgnored":
+        return this.events.bufferingIgnored(msg.nickname);
     }
   }
 
@@ -131,6 +147,41 @@ export class MockLobbyConnection implements LobbyConnection {
     if (!lobby) throw new Error("HubException: Önce bir lobiye katıl");
     return lobby;
   }
+
+  /**
+   * Lobby.RemoveWaiters: verilen kişileri listeden çıkarır; liste boşalırsa devam
+   * (konum aynı, updatedAt = şimdi). Kaydeder; liste değiştiyse yayınlar.
+   */
+  private removeWaiters(lobby: MockLobby, ids: string[]) {
+    const waits = (lobby.waits ??= {});
+    for (const id of ids) delete waits[id];
+    const before = lobby.playback.waitingFor ?? [];
+    const remaining = before.filter((id) => !ids.includes(id));
+    const changed = remaining.length !== before.length;
+    if (changed)
+      lobby.playback =
+        remaining.length === 0
+          ? { ...lobby.playback, waitingFor: [], updatedAt: Date.now() }
+          : { ...lobby.playback, waitingFor: remaining };
+    save(lobbyKey(lobby.code), lobby);
+    if (changed) this.broadcast({ type: "playback", code: lobby.code, state: lobby.playback });
+  }
+
+  /**
+   * LobbyTickService/ExpireWaits karşılığı (katılmış her sekme saniyede bir çalıştırır): MAX_WAIT'i
+   * dolduran beklemeler ve lobiden düşmüş (sekmesi kapanmış) kişiler listeden çıkar.
+   */
+  private expireWaits = () => {
+    if (!this.code) return;
+    const lobby = load<MockLobby>(lobbyKey(this.code));
+    if (!lobby?.waits) return;
+    const now = Date.now();
+    const active = activePresence(lobby.code);
+    const gone = Object.entries(lobby.waits)
+      .filter(([id, start]) => now - start >= MAX_WAIT || !active[id])
+      .map(([id]) => id);
+    if (gone.length > 0) this.removeWaiters(lobby, gone);
+  };
 
   private beat = () => {
     if (!this.code) return;
@@ -158,6 +209,9 @@ export class MockLobbyConnection implements LobbyConnection {
     delete all[this.tabId];
     save(presenceKey(this.code), all);
     this.channel.postMessage({ type: "participants", code: this.code } satisfies Message);
+    // OnDisconnectedAsync: ayrılan kişi bekleme listesinden çıkar (katılımcı listesinden sonra).
+    const lobby = load<MockLobby>(lobbyKey(this.code));
+    if (lobby?.waits?.[this.tabId] !== undefined) this.removeWaiters(lobby, [this.tabId]);
   };
 
   async start() {
@@ -169,6 +223,7 @@ export class MockLobbyConnection implements LobbyConnection {
   async stop() {
     this.leave();
     clearInterval(this.heartbeat);
+    clearInterval(this.waitTimer);
     window.removeEventListener("beforeunload", this.leave);
     this.code = null;
     this.channel.close();
@@ -188,6 +243,8 @@ export class MockLobbyConnection implements LobbyConnection {
     this.clientId = clientId;
     clearInterval(this.heartbeat);
     this.heartbeat = window.setInterval(this.beat, 2000);
+    clearInterval(this.waitTimer);
+    this.waitTimer = window.setInterval(this.expireWaits, 1000);
 
     this.broadcast({ type: "participants", code });
     this.events.playbackUpdated(lobby.playback);
@@ -217,7 +274,9 @@ export class MockLobbyConnection implements LobbyConnection {
     if (lobby.hostOnlyControl && lobby.hostClientId !== this.clientId)
       throw new Error("HubException: Sadece host kontrol edebilir");
     if (!lobby.playback.mediaId && !change(lobby.playback).mediaId) throw new Error("HubException: Önce bir medya seç");
-    lobby.playback = { ...lobby.playback, ...change(lobby.playback), updatedAt: Date.now() };
+    // Yeni komut beklemeyi bitirir; konumu komut belirler.
+    lobby.waits = {};
+    lobby.playback = { ...lobby.playback, waitingFor: [], ...change(lobby.playback), updatedAt: Date.now() };
     save(lobbyKey(lobby.code), lobby);
     this.broadcast({ type: "playback", code: lobby.code, state: lobby.playback });
   }
@@ -243,6 +302,57 @@ export class MockLobbyConnection implements LobbyConnection {
     lobby.playback = { ...lobby.playback, subtitleUrl: url };
     save(lobbyKey(lobby.code), lobby);
     this.broadcast({ type: "playback", code: lobby.code, state: lobby.playback });
+  }
+
+  /** Hub.ReportBuffering: hiç hata fırlatmaz, uygun değilse sessizce yok sayar. */
+  async reportBuffering(buffering: boolean) {
+    await delay();
+    const lobby = this.code ? load<MockLobby>(lobbyKey(this.code)) : null;
+    if (!lobby) return;
+    if (!buffering) {
+      // Lobby.StopWaiting
+      if (lobby.waits?.[this.tabId] !== undefined) this.removeWaiters(lobby, [this.tabId]);
+      return;
+    }
+
+    // Lobby.StartWaiting
+    const me = activePresence(lobby.code)[this.tabId];
+    const waits = (lobby.waits ??= {});
+    if (!lobby.playback.mediaId || !lobby.playback.isPlaying || !me || waits[this.tabId] !== undefined) return;
+
+    const now = Date.now();
+    const strikes = ((lobby.strikes ??= {})[this.clientId] ?? []).filter((t) => now - t < STRIKE_WINDOW);
+    lobby.strikes[this.clientId] = strikes;
+    if (strikes.length >= MAX_STRIKES) {
+      const ignoredUntil = (lobby.ignoredUntil ??= {});
+      if ((ignoredUntil[this.clientId] ?? 0) > now) return save(lobbyKey(lobby.code), lobby);
+      // En eski başlangıç pencereden çıkana kadar tekrar bildirilmez.
+      ignoredUntil[this.clientId] = strikes[0] + STRIKE_WINDOW;
+      save(lobbyKey(lobby.code), lobby);
+      this.broadcast({ type: "bufferingIgnored", code: lobby.code, nickname: me.nickname });
+      return;
+    }
+
+    let playback = lobby.playback;
+    const waitingFor = playback.waitingFor ?? [];
+    // Liste boşken başlıyorsa konum o ana dondurulur; sonraki kişiler yeniden hesaplamaz.
+    if (waitingFor.length === 0)
+      playback = { ...playback, positionSec: playback.positionSec + (now - playback.updatedAt) / 1000, updatedAt: now };
+    waits[this.tabId] = now;
+    strikes.push(now);
+    lobby.playback = { ...playback, waitingFor: [...waitingFor, this.tabId] };
+    save(lobbyKey(lobby.code), lobby);
+    this.broadcast({ type: "playback", code: lobby.code, state: lobby.playback });
+  }
+
+  /** Hub.SkipWaiting: kontrol kuralı Update ile aynı; liste zaten boşsa yayın yok. */
+  async skipWaiting() {
+    await delay();
+    const lobby = this.lobby();
+    if (lobby.hostOnlyControl && lobby.hostClientId !== this.clientId)
+      throw new Error("HubException: Sadece host kontrol edebilir");
+    lobby.waits = {};
+    this.removeWaiters(lobby, lobby.playback.waitingFor ?? []);
   }
 
   async setControlMode(hostOnly: boolean) {

@@ -49,6 +49,10 @@ public class LobbyHub(ILobbyStore store) : Hub
             lobby.Leave(Context.ConnectionId);
 
             await LobbyEvents.SendParticipants(Clients, lobby);
+
+            // Beklenen kişi gittiyse listeden çıkar; boşaldıysa oynatma devam eder.
+            if (lobby.StopWaiting(Context.ConnectionId, DateTimeOffset.UtcNow) is { } resumed)
+                await Clients.Group(lobby.Code).SendAsync("PlaybackUpdated", resumed);
         }
 
         await base.OnDisconnectedAsync(exception);
@@ -94,6 +98,52 @@ public class LobbyHub(ILobbyStore store) : Hub
         await Clients.Group(lobby.Code).SendAsync("PlaybackUpdated", next);
     }
 
+    // İstemcinin otomatik "takıldım / yetiştim" bildirimi. Kullanıcıya hata göstermemek için
+    // hiçbir durumda HubException fırlatmaz; uygun değilse sessizce yok sayar. Host-only modda da kabul edilir.
+    public async Task ReportBuffering(bool buffering)
+    {
+        var lobby = CurrentLobby();
+        if (lobby is null || !Context.Items.TryGetValue("clientId", out var v) || v is not string clientId)
+            return;
+
+        var now = DateTimeOffset.UtcNow;
+        if (!buffering)
+        {
+            if (lobby.StopWaiting(Context.ConnectionId, now) is { } resumed)
+                await Clients.Group(lobby.Code).SendAsync("PlaybackUpdated", resumed);
+            return;
+        }
+
+        var result = lobby.StartWaiting(Context.ConnectionId, clientId, now);
+        switch (result.Outcome)
+        {
+            case StartWaitingOutcome.Started:
+                await Clients.Group(lobby.Code).SendAsync("PlaybackUpdated", result.Playback);
+                break;
+            case StartWaitingOutcome.IgnoredFirstTime when lobby.Participants.TryGetValue(Context.ConnectionId, out var me):
+                await Clients.Group(lobby.Code).SendAsync("BufferingIgnored", me.Nickname);
+                break;
+        }
+    }
+
+    // "Beklemeden devam et": listeyi boşaltır, donan konumdan devam edilir. Liste boşsa yok sayılır.
+    public async Task SkipWaiting()
+    {
+        var lobby = CurrentLobby() ?? throw new HubException("Önce bir lobiye katıl");
+
+        PlaybackState? next;
+        lock (lobby.Gate)
+        {
+            if (lobby.HostOnlyControl && !IsHost(lobby))
+                throw new HubException("Sadece host kontrol edebilir");
+
+            next = lobby.ClearWaiting(DateTimeOffset.UtcNow);
+        }
+
+        if (next is not null)
+            await Clients.Group(lobby.Code).SendAsync("PlaybackUpdated", next);
+    }
+
     public async Task SetControlMode(bool hostOnly)
     {
         var lobby = CurrentLobby() ?? throw new HubException("Önce bir lobiye katıl");
@@ -136,7 +186,10 @@ public class LobbyHub(ILobbyStore store) : Hub
             if (lobby.Playback.MediaId is null && change(lobby.Playback).MediaId is null)
                 throw new HubException("Önce bir medya seç");
 
-            next = change(lobby.Playback) with { UpdatedAt = PlaybackState.Now() };
+            // Yeni komut beklemeyi bitirir; konumu komut belirler.
+            var now = DateTimeOffset.UtcNow;
+            lobby.ClearWaiting(now);
+            next = change(lobby.Playback) with { UpdatedAt = now.ToUnixTimeMilliseconds() };
             lobby.Playback = next;
         }
 

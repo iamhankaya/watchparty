@@ -8,6 +8,10 @@ export interface Cue {
 
 /** Baytları metne çevirir: önce UTF-8 (katı), olmazsa Windows-1254 (Türkçe). Baştaki BOM atılır. */
 export function decodeSubtitle(bytes: ArrayBuffer): string {
+  const u8 = new Uint8Array(bytes);
+  // UTF-16 BOM'u (FF FE / FE FF) UTF-8 denemesinden önce yakalanır
+  if (u8[0] === 0xff && u8[1] === 0xfe) return new TextDecoder("utf-16le").decode(bytes).replace(/^﻿/, "");
+  if (u8[0] === 0xfe && u8[1] === 0xff) return new TextDecoder("utf-16be").decode(bytes).replace(/^﻿/, "");
   let text: string;
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);

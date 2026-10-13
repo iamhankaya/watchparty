@@ -66,6 +66,12 @@ src/
 - Kodlama: önce UTF-8 (`fatal`), olmazsa Windows-1254 (Türkçe SRT'lerin çoğu böyle); baştaki BOM atılır.
 - Aynı alan kısıtı: CSP `connect-src 'self'` olduğundan yalnızca sitenin kendi alanındaki dosyalar açılır (S3/CloudFront'a yüklenenler).
   Başka alandaki link sunucuda kabul edilir ama tarayıcı "Altyazı yüklenemedi: yalnızca bu sitedeki dosyalar açılabiliyor" der; CSP gevşetilmez.
+- Dosyayı sitenin alanına almak: altyazıyı videonun yanına yükle, örn.
+  `aws s3 cp film.srt s3://<site_bucket>/videolar/<gizli-klasör>/film.srt --profile watchparty`, link
+  `https://<cloudfront>/videolar/<gizli-klasör>/film.srt`.
+- Düzeltilmiş dosyayı YENİ bir adla yükle: CloudFront 24 saate kadar önbelleğe alır ve istemciler aynı URL'yi yeniden çekmez
+  (ya da önbelleği invalidate et).
+- Yerel geliştirmede yalnızca `frontend/public` içindeki dosyalar aynı alandadır.
 - Kişisel ayar: **CC** düğmesi altyazıyı bu izleyici için açar/kapar (`localStorage` `wp:subtitles`, varsayılan açık); herkesin ekranını etkilemez.
 
 ## Bilinen sınırlar

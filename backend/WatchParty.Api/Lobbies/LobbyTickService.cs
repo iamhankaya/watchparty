@@ -4,6 +4,7 @@ namespace WatchParty.Api.Lobbies;
 
 // Saniyede bir çalışır:
 // - Host'un bağlantısı HostGracePeriod'dan uzun süredir yoksa hostluğu en eski katılımcıya devreder.
+// - MaxWait'i dolduran beklemeleri listeden çıkarır; değişiklik varsa yayınlar.
 // - Her PlaybackRebroadcastEvery'de güncel oynatma durumunu yeniden yayınlar; geride kalan sekmeler kendini düzeltir.
 public class LobbyTickService(ILobbyStore store, IHubContext<LobbyHub> hub, ILogger<LobbyTickService> logger) : BackgroundService
 {
@@ -25,6 +26,9 @@ public class LobbyTickService(ILobbyStore store, IHubContext<LobbyHub> hub, ILog
                 try
                 {
                     await TransferHostIfAway(lobby);
+
+                    if (lobby.ExpireWaits(DateTimeOffset.UtcNow) is { } expired)
+                        await hub.Clients.Group(lobby.Code).SendAsync("PlaybackUpdated", expired, stoppingToken);
 
                     if (tick % PlaybackRebroadcastEvery == 0 && lobby.Playback.MediaId is not null)
                         await hub.Clients.Group(lobby.Code).SendAsync("PlaybackUpdated", lobby.Playback, stoppingToken);
