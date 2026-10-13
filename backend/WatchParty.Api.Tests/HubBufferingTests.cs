@@ -243,4 +243,43 @@ public class HubBufferingTests
         Assert.Empty(WaitingFor(next));
         Assert.False(host.HasPendingIgnored);
     }
+
+    [Fact]
+    public async Task Invalid_Seek_throws_and_keeps_waitingFor()
+    {
+        await using var factory = new WatchPartyFactory();
+        var (host, guest) = await LobbyAsync(factory);
+        await using var _h = host;
+        await using var _g = guest;
+        await guest.Invoke("ReportBuffering", true);
+        var frozen = await host.NextUpdate();
+        Assert.Equal([guest.SelfId], WaitingFor(frozen));
+
+        await Assert.ThrowsAsync<HubException>(() => host.Invoke("Seek", -1.0));
+
+        // Durumun bozulmadığını sonraki yayın gösterir (altyazı beklemeyi korur).
+        await host.Invoke("SetSubtitle", "https://example.com/a.srt");
+        var after = await host.NextUpdate();
+        Assert.Equal([guest.SelfId], WaitingFor(after));
+        Assert.Equal(frozen.GetProperty("positionSec").GetDouble(), after.GetProperty("positionSec").GetDouble());
+    }
+
+    [Fact]
+    public async Task SetSubtitle_during_wait_keeps_waitingFor_position_and_updatedAt()
+    {
+        await using var factory = new WatchPartyFactory();
+        var (host, guest) = await LobbyAsync(factory);
+        await using var _h = host;
+        await using var _g = guest;
+        await guest.Invoke("ReportBuffering", true);
+        var frozen = await host.NextUpdate();
+
+        await host.Invoke("SetSubtitle", "https://example.com/a.srt");
+        var after = await host.NextUpdate();
+
+        Assert.Equal([guest.SelfId], WaitingFor(after));
+        Assert.Equal(frozen.GetProperty("positionSec").GetDouble(), after.GetProperty("positionSec").GetDouble());
+        Assert.Equal(frozen.GetProperty("updatedAt").GetInt64(), after.GetProperty("updatedAt").GetInt64());
+        Assert.Equal("https://example.com/a.srt", after.GetProperty("subtitleUrl").GetString());
+    }
 }

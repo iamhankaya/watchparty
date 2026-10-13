@@ -60,6 +60,7 @@ src/
   diğer izleyiciler duraklayıp konumu tutar. Kendi bağlantın `waitingFor`'dayken sapma düzeltmesi (seek/hız) **yapılmaz**,
   yalnızca oynatmaya devam edilir. Takılan istemci donmuş konumun gerisindedir; herkes donukken ona yetişir,
   `false` gelince de herkes aynı yerden devam eder.
+  "Beklemeden devam et"ten veya 10 sn sınırından sonra hâlâ takılı olan izleyici, medya ya da oynatma durumu değişene kadar tekrar bildirmez (normal sapma senkronu sürer).
   Bu, "oynatıcı olayları sunucuya gitmez" kuralının tek istisnasıdır (yalnızca "takıldım / yetiştim"; konum, seek, oynat/durdur gitmez).
   Bekleme bir kişi için en fazla 10 sn sürer; aynı kişi 5 dk içinde 3 kez beklenirse sonrakiler yok sayılır ve lobiye
   "bağlantısı yavaş; beklenmeyecek" bildirilir. Not: bir kullanıcının tamponlanmamış bir yere seek yapması herkesin 1 sn'den uzun takılıp bildirmesine ve

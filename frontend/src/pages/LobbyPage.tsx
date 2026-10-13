@@ -119,7 +119,9 @@ export function LobbyPage({ code, navigate }: Props) {
         chatMessage: (m) => setChat((list) => [...list, m].slice(-200)),
         bufferingIgnored: (name) => {
           const owner = genitive(name);
-          const text = owner ? `${owner} bağlantısı yavaş; beklenmeyecek` : `Bağlantısı yavaş: ${name} beklenmeyecek`;
+          const text = name === getNickname()
+            ? "Bağlantın yavaş; senin için beklenmeyecek"
+            : owner ? `${owner} bağlantısı yavaş; beklenmeyecek` : `Bağlantısı yavaş: ${name} beklenmeyecek`;
           setToast({ text, kind: "info" });
         },
         joined: (r) => {

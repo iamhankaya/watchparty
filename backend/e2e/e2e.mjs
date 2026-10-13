@@ -142,9 +142,9 @@ ok((await err(ba.conn.invoke("ReportBuffering", true))) === null, "non-host Repo
 await sleep(300);
 const w1 = bh.ev.playback.at(-1);
 ok(w1?.waitingFor?.includes(ba.conn.connectionId), "waitingFor contains the buffering client's id");
+ok(w1.isPlaying && w1.positionSec >= 10 && Math.abs(Date.now() - w1.updatedAt) < 5000, "position frozen at report time (isPlaying, positionSec >= 10, recent updatedAt)");
 await sleep(300);
-const w2 = bh.ev.playback.at(-1);
-ok(w2.positionSec === w1.positionSec && w2.updatedAt === w1.updatedAt && w1.positionSec >= 10 && w1.isPlaying, "position frozen while waiting (same positionSec and updatedAt)");
+ok(bh.ev.playback.at(-1)?.updatedAt === w1.updatedAt, "no rebroadcast changed the frozen state while waiting");
 ok((await err(ba.conn.invoke("SkipWaiting")))?.includes("Sadece host"), "SkipWaiting by non-host rejected in host-only mode");
 await ba.conn.invoke("ReportBuffering", false);
 await sleep(300);

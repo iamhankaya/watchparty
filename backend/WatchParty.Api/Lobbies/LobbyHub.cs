@@ -188,6 +188,8 @@ public class LobbyHub(ILobbyStore store) : Hub
 
             // Yeni komut beklemeyi bitirir; konumu komut belirler.
             var now = DateTimeOffset.UtcNow;
+            // Önce değişikliği hesapla: change fırlatırsa (geçersiz konum) bekleme listesi bozulmaz.
+            _ = change(lobby.Playback);
             lobby.ClearWaiting(now);
             next = change(lobby.Playback) with { UpdatedAt = now.ToUnixTimeMilliseconds() };
             lobby.Playback = next;
