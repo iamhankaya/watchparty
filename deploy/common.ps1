@@ -31,13 +31,26 @@ function Get-InfraOutputsFromSsm {
 
 # terraform output -json çıktısını düz bir nesneye çevirir: $o.cloudfront_domain, $o.instance_id vb.
 function Get-InfraOutputs {
-    if ($env:WP_OUTPUTS_FROM_SSM -eq "1") {
+    $fromSsm = ($env:WP_OUTPUTS_FROM_SSM -eq "1")
+    if ($fromSsm) {
         $flat = Get-InfraOutputsFromSsm
-        foreach ($k in "cloudfront_domain", "distribution_id", "site_bucket", "deploy_bucket", "instance_id", "origin_domain") {
-            if (-not $flat.Contains($k)) { throw "infra çıktıları eksik ($k); önce terraform apply" }
-        }
-        return [pscustomobject]$flat
+    } else {
+        $flat = Get-InfraOutputsFromTerraform
     }
+    # Zorunlu anahtar kontrolü iki yol için ortak; SSM yolunda origin_domain da gerekir.
+    $required = @("cloudfront_domain", "distribution_id", "site_bucket", "deploy_bucket", "instance_id")
+    if ($fromSsm) { $required += "origin_domain" }
+    foreach ($k in $required) {
+        if (-not $flat.Contains($k)) {
+            $hint = if ($fromSsm) { "SSM parametresini güncellemek için terraform apply" } else { "önce terraform apply" }
+            throw "infra çıktıları eksik ($k); $hint"
+        }
+    }
+    return [pscustomobject]$flat
+}
+
+# terraform output -json çıktısını düz bir sıralı sözlüğe çevirir.
+function Get-InfraOutputsFromTerraform {
     $infra = Join-Path $script:RepoRoot "infra"
     $json = $null
     $prev = $ErrorActionPreference
@@ -57,10 +70,7 @@ function Get-InfraOutputs {
     $raw = ($json -join "`n") | ConvertFrom-Json
     $flat = [ordered]@{}
     foreach ($p in $raw.PSObject.Properties) { $flat[$p.Name] = $p.Value.value }
-    foreach ($k in "cloudfront_domain", "distribution_id", "site_bucket", "deploy_bucket", "instance_id") {
-        if (-not $flat.Contains($k)) { throw "infra çıktıları eksik ($k); önce terraform apply" }
-    }
-    return [pscustomobject]$flat
+    return $flat
 }
 
 # Klasörü, girdi adlarında '/' ayırıcı kullanan bir zip'e paketler (Linux'taki unzip için).
