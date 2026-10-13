@@ -37,7 +37,8 @@ type Message =
   | { type: "control"; code: string; hostOnly: boolean }
   | { type: "host"; code: string; nickname: string }
   | { type: "chat"; code: string; message: ChatMessage }
-  | { type: "bufferingIgnored"; code: string; nickname: string };
+  | { type: "bufferingIgnored"; code: string; nickname: string }
+  | { type: "typing"; code: string; id: string; nickname: string };
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const PRESENCE_TIMEOUT = 6000;
@@ -133,6 +134,8 @@ export class MockLobbyConnection implements LobbyConnection {
         return this.events.chatMessage(msg.message);
       case "bufferingIgnored":
         return this.events.bufferingIgnored(msg.nickname);
+      case "typing":
+        return this.events.userTyping(msg.id, msg.nickname);
     }
   }
 
@@ -266,6 +269,14 @@ export class MockLobbyConnection implements LobbyConnection {
     lobby.chat = [...lobby.chat, message].slice(-50);
     save(lobbyKey(lobby.code), lobby);
     this.broadcast({ type: "chat", code: lobby.code, message });
+  }
+
+  /** Hub.Typing: durum tutmaz, hata fırlatmaz; Clients.OthersInGroup gibi yalnızca diğer sekmelere iletir. */
+  async typing() {
+    await delay();
+    const me = this.code ? activePresence(this.code)[this.tabId] : undefined;
+    if (!this.code || !me) return;
+    this.channel.postMessage({ type: "typing", code: this.code, id: this.tabId, nickname: me.nickname } satisfies Message);
   }
 
   private async update(change: (s: PlaybackState) => Partial<PlaybackState>) {

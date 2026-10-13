@@ -4,18 +4,22 @@ import { ServerClock } from "../lib/clock";
 import { createLobbyConnection, type LobbyConnection } from "../lib/connection";
 import { describeConnectionError, errorMessage } from "../lib/errors";
 import {
+  getChatSoundOn,
   getClientId,
   getNickname,
   getSubtitlesOn,
   getVolume,
+  saveChatSoundOn,
   saveNickname,
   saveSubtitlesOn,
   saveVolume,
   type VolumeSetting,
 } from "../lib/identity";
+import { isChatVisible, playBlip, shouldNotify, titleWithCount } from "../lib/notify";
 import { lockLandscape, unlockOrientation } from "../lib/orientation";
 import { SyncEngine } from "../lib/sync";
 import { genitive } from "../lib/turkish";
+import { TypingTracker } from "../lib/typing";
 import {
   expectedPosition,
   MAX_NICKNAME,
@@ -63,6 +67,10 @@ export function LobbyPage({ code, navigate }: Props) {
   const [subtitlesOn, setSubtitlesOn] = useState(getSubtitlesOn);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [chatOpen, setChatOpen] = useState(true);
+  const [soundOn, setSoundOn] = useState(getChatSoundOn);
+  // Sayfa gizliyken ya da odakta değilken gelen başkalarının mesajları (sekme başlığında gösterilir).
+  const [unread, setUnread] = useState(0);
+  const [typingLabel, setTypingLabel] = useState<string | null>(null);
 
   const connRef = useRef<LobbyConnection | null>(null);
   const clockRef = useRef(new ServerClock());
@@ -70,6 +78,17 @@ export function LobbyPage({ code, navigate }: Props) {
   const playerRef = useRef<Player | null>(null);
   const volumeRef = useRef(volume);
   const theaterRef = useRef<HTMLDivElement>(null);
+  // Bağlantı olayları join() kapanışında çalışır; güncel değerleri ref'lerden okurlar.
+  const myNicknameRef = useRef(nickname);
+  const soundOnRef = useRef(soundOn);
+  const fullscreenRef = useRef(false);
+  const chatOpenRef = useRef(true);
+  const lastSoundAtRef = useRef(-Infinity);
+  // Sayaç eklenmeden önceki özgün başlık (titleWithCount mevcut öneki ayıklamaz).
+  const baseTitleRef = useRef(document.title);
+  const trackerRef = useRef(new TypingTracker());
+  // Yazanların kimlik -> takma ad eşlemesi: mesajı gelince ya da lobiden çıkınca takipçiden silmek için.
+  const typingIdsRef = useRef(new Map<string, string>());
 
   const showError = useCallback((e: unknown) => setToast({ text: errorMessage(e), kind: "error" }), []);
 
@@ -86,6 +105,39 @@ export function LobbyPage({ code, navigate }: Props) {
       void connRef.current?.stop();
     };
   }, []);
+
+  // Aynı ad birden çok kişide olabilir; ifadede bir kez geçer.
+  const refreshTyping = useCallback(() => {
+    const names = [...new Set(trackerRef.current.active(Date.now()))];
+    setTypingLabel(trackerRef.current.label(names));
+  }, []);
+
+  const forgetTyping = useCallback((id: string) => {
+    trackerRef.current.remove(id);
+    typingIdsRef.current.delete(id);
+  }, []);
+
+  // Yeni sohbet mesajı (geçmiş değil): ses, sekme sayacı ve yazanın "yazıyor" ifadesi.
+  const handleIncoming = useCallback(
+    (m: ChatMessage) => {
+      // ChatMessage'da kimlik yok; Chat'teki "mine" ölçütüyle aynı şekilde ada göre eşleriz.
+      for (const [id, name] of typingIdsRef.current) if (name === m.nickname) forgetTyping(id);
+      refreshTyping();
+
+      if (m.nickname === myNicknameRef.current) return;
+      const hidden = document.hidden;
+      const focused = document.hasFocus();
+      const now = Date.now();
+      const visible = isChatVisible({ hidden, focused, fullscreen: fullscreenRef.current, chatOpen: chatOpenRef.current });
+      if (shouldNotify({ fromSelf: false, history: false, visible, soundOn: soundOnRef.current, lastSoundAt: lastSoundAtRef.current, now })) {
+        lastSoundAtRef.current = now;
+        playBlip();
+      }
+      // Sayaç ses ayarından bağımsızdır.
+      if (hidden || !focused) setUnread((n) => n + 1);
+    },
+    [forgetTyping, refreshTyping],
+  );
 
   const join = useCallback(
     async (nick: string, reconnect = false) => {
@@ -108,7 +160,13 @@ export function LobbyPage({ code, navigate }: Props) {
       engine.setPlayer(playerRef.current);
 
       conn = createLobbyConnection({
-        participantsChanged: setParticipants,
+        participantsChanged: (list) => {
+          setParticipants(list);
+          // Lobiden çıkan kişinin "yazıyor" ifadesi hemen kalkar.
+          const ids = new Set(list.map((p) => p.id));
+          for (const id of typingIdsRef.current.keys()) if (!ids.has(id)) forgetTyping(id);
+          refreshTyping();
+        },
         playbackUpdated: (s) => {
           setPlayback(s);
           engine.setState(s);
@@ -116,7 +174,15 @@ export function LobbyPage({ code, navigate }: Props) {
         controlModeChanged: setHostOnly,
         hostChanged: (name) => setToast({ text: `Yeni host: ${name}`, kind: "info" }),
         chatHistory: setChat,
-        chatMessage: (m) => setChat((list) => [...list, m].slice(-200)),
+        chatMessage: (m) => {
+          setChat((list) => [...list, m].slice(-200));
+          handleIncoming(m);
+        },
+        userTyping: (id, name) => {
+          trackerRef.current.add(id, name, Date.now());
+          typingIdsRef.current.set(id, name);
+          refreshTyping();
+        },
         bufferingIgnored: (name) => {
           const owner = genitive(name);
           const text = owner ? `${owner} bağlantısı yavaş; beklenmeyecek` : `Bağlantısı yavaş: ${name} beklenmeyecek`;
@@ -165,7 +231,7 @@ export function LobbyPage({ code, navigate }: Props) {
         if (reconnect) setRetrying(false);
       }
     },
-    [code],
+    [code, handleIncoming, refreshTyping, forgetTyping],
   );
 
   // 1) Lobi var mı, dolu mu?
@@ -201,6 +267,42 @@ export function LobbyPage({ code, navigate }: Props) {
     }, 30000);
     return () => clearInterval(t);
   }, [phase]);
+
+  // "Yazıyor" ifadesi 5 sn sonra kendiliğinden kalksın diye saniyede bir tazelenir.
+  useEffect(() => {
+    if (phase !== "joined") return;
+    const t = setInterval(refreshTyping, 1000);
+    return () => clearInterval(t);
+  }, [phase, refreshTyping]);
+
+  // Sekme başlığında okunmamış sayacı; sayfa görünür ve odaktayken sıfırlanır.
+  useEffect(() => {
+    document.title = titleWithCount(baseTitleRef.current, unread);
+  }, [unread]);
+
+  useEffect(() => {
+    const reset = () => {
+      if (!document.hidden && document.hasFocus()) setUnread(0);
+    };
+    document.addEventListener("visibilitychange", reset);
+    window.addEventListener("focus", reset);
+    const baseTitle = baseTitleRef.current;
+    return () => {
+      document.removeEventListener("visibilitychange", reset);
+      window.removeEventListener("focus", reset);
+      document.title = baseTitle;
+    };
+  }, []);
+
+  useEffect(() => {
+    soundOnRef.current = soundOn;
+    saveChatSoundOn(soundOn);
+  }, [soundOn]);
+
+  useEffect(() => {
+    fullscreenRef.current = isFullscreen;
+    chatOpenRef.current = chatOpen;
+  }, [isFullscreen, chatOpen]);
 
   const handlePlayer = useCallback((p: Player | null) => {
     playerRef.current = p;
@@ -299,6 +401,7 @@ export function LobbyPage({ code, navigate }: Props) {
   );
 
   const me = participants.find((p) => p.id === selfId);
+  myNicknameRef.current = me?.nickname ?? nickname;
   const isHost = me ? me.isHost : joinedAsHost;
   const canControl = !hostOnly || isHost;
   const conn = connRef.current;
@@ -306,7 +409,15 @@ export function LobbyPage({ code, navigate }: Props) {
   const serverPosition = () => (playback ? expectedPosition(playback, clockRef.current.now()) : 0);
 
   const chatBox = (
-    <Chat messages={chat} myNickname={me?.nickname ?? nickname} onSend={(text) => conn?.sendChat(text).catch((err) => { showError(err); throw err; })} />
+    <Chat
+      messages={chat}
+      myNickname={me?.nickname ?? nickname}
+      onSend={(text) => conn?.sendChat(text).catch((err) => { showError(err); throw err; })}
+      onTyping={() => conn?.typing()}
+      typingLabel={typingLabel}
+      soundOn={soundOn}
+      onToggleSound={() => setSoundOn((on) => !on)}
+    />
   );
 
   const theater = (

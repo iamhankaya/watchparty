@@ -14,6 +14,8 @@ export interface LobbyEvents {
   chatMessage(message: ChatMessage): void;
   /** Sürekli takılan biri bu pencere boyunca beklenmeyecek (lobiye bir kez bildirilir). */
   bufferingIgnored(nickname: string): void;
+  /** Lobideki başka biri sohbete yazıyor (kendimize gelmez); id katılımcı kimliği, ad sunucudan. */
+  userTyping(id: string, nickname: string): void;
   /** İlk katılımda ve kopup yeniden bağlanınca (yeni selfId ile) çağrılır. */
   joined(result: JoinResult): void;
   statusChanged(status: ConnectionStatus): void;
@@ -38,6 +40,8 @@ export interface LobbyConnection {
   reportBuffering(buffering: boolean): Promise<void>;
   /** "Beklemeden devam et": bekleme listesini boşaltır (kontrol kuralı oynat/durdur ile aynı). */
   skipWaiting(): Promise<void>;
+  /** "Yazıyor" bildirimi; sunucu durum tutmaz, diğerlerine userTyping olarak iletir. */
+  typing(): Promise<void>;
   ping(): Promise<number>;
 }
 
@@ -59,6 +63,7 @@ class SignalRLobbyConnection implements LobbyConnection {
     this.conn.on("ChatHistory", (messages: ChatMessage[]) => events.chatHistory(messages));
     this.conn.on("ChatMessage", (message: ChatMessage) => events.chatMessage(message));
     this.conn.on("BufferingIgnored", (nickname: string) => events.bufferingIgnored(nickname));
+    this.conn.on("UserTyping", (id: string, nickname: string) => events.userTyping(id, nickname));
 
     this.conn.onreconnecting(() => events.statusChanged("reconnecting"));
     this.conn.onreconnected(async () => {
@@ -121,6 +126,7 @@ class SignalRLobbyConnection implements LobbyConnection {
   sendChat = (text: string) => this.call<void>("SendChat", text);
   reportBuffering = (buffering: boolean) => this.call<void>("ReportBuffering", buffering);
   skipWaiting = () => this.call<void>("SkipWaiting");
+  typing = () => this.call<void>("Typing");
   ping = () => this.call<number>("Ping");
 }
 
