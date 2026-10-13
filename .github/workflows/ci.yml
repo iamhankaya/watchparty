@@ -1,0 +1,79 @@
+name: CI
+
+# Her push ve PR'da kontroller koşar; AWS'ye erişmez.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+# Aynı daldaki eski koşu, yeni push gelince iptal edilir.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Backend testleri
+        run: dotnet test backend/WatchParty.slnx
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Birim testleri
+        run: npm test
+      - name: Derleme (tip denetimi dahil)
+        run: npm run build
+
+  infra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.10"
+          terraform_wrapper: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Terraform biçim denetimi
+        run: terraform -chdir=infra fmt -check -recursive
+      - name: Terraform init (backend'siz)
+        run: terraform -chdir=infra init -backend=false
+      - name: Terraform validate
+        run: terraform -chdir=infra validate
+      - name: CloudFront SPA yeniden yazma testleri
+        run: node --test "infra/tests/*.test.mjs"
+      - name: Sunucu tarafı deploy script testi
+        run: bash deploy/tests/remote-deploy.test.sh
+      - name: Ortak PowerShell fonksiyon testleri
+        run: pwsh -NoProfile -File deploy/tests/common.test.ps1
+
+  downloader:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r tools/downloader/requirements.txt
+      - name: İndirme aracı testleri
+        working-directory: tools/downloader
+        run: python -m unittest
