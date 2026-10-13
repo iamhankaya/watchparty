@@ -29,3 +29,8 @@ output "origin_domain" {
   description = "CloudFront'un API origin'i: Elastic IP'nin public DNS adı"
   value       = aws_eip.api.public_dns
 }
+
+output "github_deploy_role_arn" {
+  description = "GitHub Actions'ın üstleneceği deploy rolü (repo değişkeni AWS_DEPLOY_ROLE_ARN)"
+  value       = aws_iam_role.github_deploy.arn
+}

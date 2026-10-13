@@ -1,0 +1,91 @@
+name: Deploy
+
+# Yalnızca elle başlatılır (Actions -> Deploy -> Run workflow) ve yalnızca master'dan.
+# Backend deploy'u bellekteki lobileri düşürdüğü için otomatik tetiklenmez.
+on:
+  workflow_dispatch:
+    inputs:
+      hedef:
+        description: "Neyi deploy edelim"
+        type: choice
+        options:
+          - frontend
+          - backend
+          - ikisi
+        default: frontend
+
+permissions:
+  id-token: write
+  contents: read
+
+# Aynı anda tek deploy; çalışan deploy iptal edilmez.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: windows-latest
+    env:
+      # deploy script'leri altyapı çıktılarını Terraform state yerine SSM'den okur
+      WP_OUTPUTS_FROM_SSM: "1"
+    steps:
+      - name: Dal denetimi
+        if: github.ref != 'refs/heads/master'
+        shell: powershell
+        run: |
+          Write-Error "Deploy yalnızca master dalından başlatılabilir."
+          exit 1
+
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # OIDC ile rol üstlenme (kalıcı anahtar yok)
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: eu-north-1
+
+      # Backend her zaman frontend'den önce
+      - name: Backend deploy
+        if: inputs.hedef != 'frontend'
+        shell: powershell
+        run: |
+          .\deploy\deploy-backend.ps1 -Profile ""
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Frontend bağımlılıkları
+        if: inputs.hedef != 'backend'
+        working-directory: frontend
+        shell: powershell
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Frontend deploy
+        if: inputs.hedef != 'backend'
+        shell: powershell
+        run: |
+          .\deploy\deploy-frontend.ps1 -Profile ""
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Canlı smoke testi
+        shell: powershell
+        run: |
+          $json = aws ssm get-parameter --name /watchparty/infra-outputs --query Parameter.Value --output text
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $out = $json | ConvertFrom-Json
+          $env:BASE_URL = "https://$($out.cloudfront_domain)"
+          $env:ORIGIN_URL = "http://$($out.origin_domain)"
+          Set-Location backend/e2e
+          npm ci
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          npm run smoke
+          if ($LASTEXITCODE -ne 0) { exit 1 }
