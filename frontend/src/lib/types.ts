@@ -7,6 +7,7 @@ export interface PlaybackState {
   isPlaying: boolean;
   positionSec: number;
   updatedAt: number; // sunucu saati, unix ms
+  subtitleUrl: string | null; // lobi genelinde ortak altyazı (yalnızca MP4)
 }
 
 export interface Participant {

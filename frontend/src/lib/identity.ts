@@ -55,3 +55,7 @@ export function getVolume(): VolumeSetting {
 }
 
 export const saveVolume = (v: VolumeSetting) => write("wp:volume", JSON.stringify(v));
+
+// Altyazı açık/kapalı kişiye özel; varsayılan açık.
+export const getSubtitlesOn = () => read("wp:subtitles") !== "false";
+export const saveSubtitlesOn = (on: boolean) => write("wp:subtitles", String(on));

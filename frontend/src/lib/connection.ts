@@ -25,6 +25,8 @@ export interface LobbyConnection {
   stop(): Promise<void>;
   join(code: string, nickname: string, clientId: string): Promise<JoinResult>;
   setMedia(type: MediaType, id: string): Promise<void>;
+  /** null altyazıyı kaldırır. */
+  setSubtitle(url: string | null): Promise<void>;
   play(positionSec: number): Promise<void>;
   pause(positionSec: number): Promise<void>;
   seek(positionSec: number): Promise<void>;
@@ -104,6 +106,7 @@ class SignalRLobbyConnection implements LobbyConnection {
   }
 
   setMedia = (type: MediaType, id: string) => this.call<void>("SetMedia", type, id);
+  setSubtitle = (url: string | null) => this.call<void>("SetSubtitle", url);
   play = (pos: number) => this.call<void>("Play", pos);
   pause = (pos: number) => this.call<void>("Pause", pos);
   seek = (pos: number) => this.call<void>("Seek", pos);

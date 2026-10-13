@@ -114,24 +114,50 @@ Frontend için rollback script'i yok; önceki commit'e geçip (git checkout) `de
 **Deploy** (`.github/workflows/deploy.yml`) yalnızca elle başlar: GitHub → Actions → Deploy → Run workflow → `hedef` (`frontend` | `backend` | `ikisi`, varsayılan `frontend`). Yalnızca `master`'dan çalışır; sıra her zaman önce backend. İş `windows-latest` üzerinde mevcut `deploy\deploy-backend.ps1 -Profile ""` / `deploy\deploy-frontend.ps1 -Profile ""` script'lerini çalıştırır, ardından canlı smoke testini koşar. Aynı anda tek deploy çalışır. Backend'deki otomatik geri dönüş (sağlık kontrolü) CI'da da aynen geçerlidir.
 
 - **Backend deploy'u bellekteki lobileri düşürür.** İnsanlar izlerken `backend` ya da `ikisi` başlatmayın. CI deploy'unu ilk denerken `hedef=frontend` seçin (lobilere dokunmaz).
-- Script'ler `WP_OUTPUTS_FROM_SSM=1` ile çıktıları `terraform output` yerine SSM parametresi `/watchparty/infra-outputs`'tan okur (gizli değer içermez; Terraform her `apply`'da günceller). `-Profile ""` ise `--profile` eklenmemesini sağlar: aws CLI ortamdaki OIDC kimliğini kullanır.
+- Script'ler `WP_OUTPUTS_FROM_SSM=1` ile çıktıları `terraform output` yerine SSM parametresi `/watchparty/infra-outputs`'tan okur (gizli değer içermez; Terraform her `apply`'da günceller). `-Profile ""` ise `--profile` eklenmemesini sağlar: aws CLI ortamdaki deploy kullanıcısı kimliğini (GitHub secret'ları) kullanır.
 
 ### İlk kurulum (tek seferlik)
 
 ```powershell
-terraform -chdir=infra apply    # OIDC sağlayıcısı, rol, SSM parametresi: yalnızca ekleme olmalı (N to add, 0 to change, 0 to destroy)
-gh variable set AWS_DEPLOY_ROLE_ARN --body (terraform -chdir=infra output -raw github_deploy_role_arn)
+terraform -chdir=infra plan     # deploy kullanıcısı, politikası, SSM parametresi: yalnızca ekleme (N to add, 0 to change, 0 to destroy)
+terraform -chdir=infra apply
 ```
 
-### Rolün sınırları
+Ardından access key oluşturulur ve **ekrana yazdırılmadan** doğrudan GitHub secret'larına aktarılır (anahtar Terraform state'ine de girmez):
 
-`watchparty-github-deploy` (`infra/github.tf`) GitHub OIDC ile üstlenilir; kalıcı access key ya da GitHub secret yoktur.
+```powershell
+$k = aws iam create-access-key --user-name watchparty-github-deploy --profile watchparty --output json | ConvertFrom-Json
+$k.AccessKey.AccessKeyId     | gh secret set AWS_ACCESS_KEY_ID
+$k.AccessKey.SecretAccessKey | gh secret set AWS_SECRET_ACCESS_KEY
+Remove-Variable k
+```
 
-- Güven politikası yalnızca `repo:iamhankaya/watchparty:ref:refs/heads/master` için geçerlidir (repo adı `github_repo` değişkeni); başka dal ya da PR üstlenemez.
+Anahtar yenileme: yeni anahtarı aynı şekilde oluşturup secret'lara yazın, bir deploy ile deneyin, eskisini `aws iam delete-access-key --user-name watchparty-github-deploy --access-key-id <eski> --profile watchparty` ile silin (kullanıcı başına en fazla iki anahtar).
+
+### Deploy kullanıcısının sınırları
+
+`watchparty-github-deploy` (`infra/github.tf`) access key'i GitHub secret'larında (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`) duran bir IAM kullanıcısıdır. Hesap AWS'nin yeni kayıt deneyiminin Free Tier planında; AWS'nin yönettiği SCP `iam:*Provider*` işlemlerini yasakladığı için anahtarsız OIDC kurulamıyor (hesap Paid Plan'a yükseltilince OIDC'ye dönülebilir, bkz. `docs/BACKLOG.md`).
+
+- Secret'lar yalnızca bu private repodaki iş akışlarına açıktır; deploy iş akışı `master` dışından başlatılırsa ilk adımda durur. Anahtar sızarsa: `aws iam delete-access-key` ile hemen silin, yenisini oluşturun.
 - Terraform state bucket'ına (`watchparty-tfstate-*`) hiçbir izni yoktur (state origin secret'ı içerir); `terraform apply` CI'dan çalıştırılmaz.
 - `s3:DeleteObject` yoktur (frontend deploy'u hiçbir şey silmez; videolar ayrı bucket'tadır ve bu rol ona erişemez); deploy bucket'ında yalnızca `backend/*` altına yazar.
 - Diğer izinler: site bucket'ına yükleme, bu dağıtımda invalidation, bu instance'a `AWS-RunShellScript` ile SSM komutu, yalnızca `/watchparty/infra-outputs` parametresini okuma.
-- Kontrol: `aws iam simulate-principal-policy --policy-source-arn <rol> --action-names s3:GetObject s3:DeleteObject --resource-arns arn:aws:s3:::watchparty-tfstate-8b2f65c1/watchparty/terraform.tfstate` hepsi `implicitDeny` dönmeli.
+- Kontrol: kullanıcının kendi politikası IAM simülatörüyle denenir. `simulate-principal-policy` bu hesapta kullanılamaz: AWS'nin yönettiği organizasyon kuralları yüzünden yönetici dahil her işlemi `explicitDeny` gösterir. Bunun yerine politika `simulate-custom-policy`'ye verilir (her kontrol ayrı çağrı; birden fazla kaynak verilince sonuçlar birleşir). İlk üç satır `implicitDeny`, sonuncusu `allowed` dönmeli:
+
+  ```powershell
+  $pol = (aws iam get-user-policy --user-name watchparty-github-deploy --policy-name deploy --profile watchparty --query PolicyDocument --output json) -join "`n"
+  $req = Join-Path $env:TEMP "wp-sim.json"
+  foreach ($c in @(
+      @("s3:GetObject",    "arn:aws:s3:::watchparty-tfstate-8b2f65c1/watchparty/terraform.tfstate"),
+      @("s3:ListBucket",   "arn:aws:s3:::watchparty-tfstate-8b2f65c1"),
+      @("s3:DeleteObject", "arn:aws:s3:::watchparty-site-b554977f/index.html"),
+      @("s3:PutObject",    "arn:aws:s3:::watchparty-site-b554977f/index.html"))) {
+    @{ PolicyInputList = @($pol); ActionNames = @($c[0]); ResourceArns = @($c[1]) } | ConvertTo-Json | Set-Content -Encoding ascii $req
+    $d = aws iam simulate-custom-policy --cli-input-json "file://$req" --profile watchparty --query "EvaluationResults[0].EvalDecision" --output text
+    "{0,-16} {1,-14} {2}" -f $c[0], $d, $c[1]
+  }
+  Remove-Item $req
+  ```
 
 Lokal deploy aynen çalışmaya devam eder (`deploy\deploy-*.ps1`, varsayılan `-Profile watchparty`, çıktılar `terraform output`'tan). `deploy/common.ps1` testi: `powershell -NoProfile -File deploy/tests/common.test.ps1`.
 

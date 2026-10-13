@@ -7,13 +7,14 @@ interface Props {
   playback: PlaybackState | null;
   blocked: boolean;
   canControl: boolean;
+  subtitlesOn: boolean;
   onTogglePlay(): void;
   onPlayer(player: Player | null): void;
   onError(message: string): void;
   onUnblock(): void;
 }
 
-export function PlayerArea({ playback, blocked, canControl, onTogglePlay, onPlayer, onError, onUnblock }: Props) {
+export function PlayerArea({ playback, blocked, canControl, subtitlesOn, onTogglePlay, onPlayer, onError, onUnblock }: Props) {
   const type = playback?.mediaType;
   const id = playback?.mediaId;
 
@@ -27,7 +28,16 @@ export function PlayerArea({ playback, blocked, canControl, onTogglePlay, onPlay
       )}
       {/* key: medya değişince oynatıcı baştan kurulur */}
       {id && type === "youtube" && <YouTubePlayer key={id} videoId={id} onPlayer={onPlayer} onError={onError} />}
-      {id && type === "file" && <FilePlayer key={id} url={id} onPlayer={onPlayer} onError={onError} />}
+      {id && type === "file" && (
+        <FilePlayer
+          key={id}
+          url={id}
+          subtitleUrl={playback?.subtitleUrl ?? null}
+          subtitlesOn={subtitlesOn}
+          onPlayer={onPlayer}
+          onError={onError}
+        />
+      )}
       {/* YouTube'un kendi tıklamalarını yakalar: tıklama oynatıcıya değil sunucuya gider (oynat/durdur),
           böylece herkes aynı anda oynar. Oynatma engellendiyse tıklama engeli kaldırır. */}
       {id && (
