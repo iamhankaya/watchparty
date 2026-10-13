@@ -7,8 +7,37 @@ $script:RepoRoot = Split-Path -Parent $PSScriptRoot
 # Windows'ta aws CLI çıktıyı sistem kod sayfasıyla (ör. cp1254) yazar; Türkçe karakterler bozulmasın diye UTF-8'e zorlanır.
 $env:AWS_CLI_OUTPUT_ENCODING = "UTF-8"
 
+# CI'da terraform yok: çıktılar SSM parametresinde (/watchparty/infra-outputs) düz JSON olarak durur.
+# Salt okunur olduğu için $script:DryRun'dan bağımsız gerçekten çalışır.
+function Get-InfraOutputsFromSsm {
+    $awsArgs = @("ssm", "get-parameter", "--name", "/watchparty/infra-outputs")
+    if ($Profile) { $awsArgs += @("--profile", $Profile) }
+    $awsArgs += @("--output", "json")
+    $out = $null
+    try {
+        $out = & aws @awsArgs
+    } catch {
+        $out = $null
+    }
+    if (-not $out -or $LASTEXITCODE -ne 0) {
+        throw "infra çıktıları SSM parametresinden (/watchparty/infra-outputs) okunamadı"
+    }
+    $value = (($out -join "`n") | ConvertFrom-Json).Parameter.Value
+    $raw = $value | ConvertFrom-Json
+    $flat = [ordered]@{}
+    foreach ($p in $raw.PSObject.Properties) { $flat[$p.Name] = $p.Value }
+    return $flat
+}
+
 # terraform output -json çıktısını düz bir nesneye çevirir: $o.cloudfront_domain, $o.instance_id vb.
 function Get-InfraOutputs {
+    if ($env:WP_OUTPUTS_FROM_SSM -eq "1") {
+        $flat = Get-InfraOutputsFromSsm
+        foreach ($k in "cloudfront_domain", "distribution_id", "site_bucket", "deploy_bucket", "instance_id", "origin_domain") {
+            if (-not $flat.Contains($k)) { throw "infra çıktıları eksik ($k); önce terraform apply" }
+        }
+        return [pscustomobject]$flat
+    }
     $infra = Join-Path $script:RepoRoot "infra"
     $json = $null
     $prev = $ErrorActionPreference
@@ -54,7 +83,10 @@ function New-ZipWithForwardSlashes([string]$SourceDir, [string]$ZipPath) {
 # aws CLI'yi seçili profille çalıştırır; çıkış kodu sıfır değilse hata fırlatır.
 # $script:DryRun açıksa komutu çalıştırmaz, yalnızca yazdırır.
 function Invoke-Aws {
-    $awsArgs = @($args) + @("--profile", $Profile, "--output", "json")
+    $awsArgs = @($args)
+    # Profil boşsa (CI'da OIDC ortam değişkenleri) --profile eklenmez.
+    if ($Profile) { $awsArgs += @("--profile", $Profile) }
+    $awsArgs += @("--output", "json")
     if ($script:DryRun) {
         Write-Host ("[DryRun] aws " + ($awsArgs -join " "))
         return
