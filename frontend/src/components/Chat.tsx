@@ -44,6 +44,7 @@ export function Chat({ messages, myNickname, onSend, onTyping, typingLabel, soun
     const value = text.trim();
     if (!value) return;
     setText("");
+    throttleRef.current.reset();
     // Gönderim başarısız olursa (ör. hız limiti) metni geri koy; kutuda yeni yazı varsa dokunma.
     void Promise.resolve(onSend(value)).catch(() => setText((current) => (current === "" ? value : current)));
   }

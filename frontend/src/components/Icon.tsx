@@ -73,7 +73,7 @@ const PATHS = {
       <path d="M4 4l16 16" />
     </>
   ),
-  crown:<path d="M4 17.5h16M4.5 15l-1-8.5 5 4L12 5l3.5 5.5 5-4-1 8.5z" />,
+  crown: <path d="M4 17.5h16M4.5 15l-1-8.5 5 4L12 5l3.5 5.5 5-4-1 8.5z" />,
 };
 
 export type IconName = keyof typeof PATHS;

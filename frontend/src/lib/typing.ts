@@ -14,14 +14,14 @@ export class TypingTracker {
     this.entries.delete(id);
   }
 
-  // Süresi dolmamış kişilerin takma adları (ekleme sırasıyla).
+  // Süresi dolmamış kişilerin takma adları (ekleme sırasıyla, aynı ad bir kez).
   active(now: number): string[] {
-    const names: string[] = [];
+    const names = new Set<string>();
     for (const [id, e] of this.entries) {
       if (now - e.at >= EXPIRY_MS) this.entries.delete(id);
-      else names.push(e.nickname);
+      else names.add(e.nickname);
     }
-    return names;
+    return [...names];
   }
 
   label(names: string[]): string | null {
@@ -39,5 +39,10 @@ export class TypingThrottle {
     if (now - this.last < SEND_GAP_MS) return false;
     this.last = now;
     return true;
+  }
+
+  // Mesaj gönderilince sıfırlanır: sonraki mesajın yazıyor bildirimi hemen gider.
+  reset(): void {
+    this.last = -Infinity;
   }
 }

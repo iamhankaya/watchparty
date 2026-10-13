@@ -98,6 +98,11 @@ export function LobbyPage({ code, navigate }: Props) {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // Kendi takma adım: katılımcı listesindeki ad, yoksa girilen ad (olay kapanışları ref'ten okur).
+  useEffect(() => {
+    myNicknameRef.current = participants.find((p) => p.id === selfId)?.nickname ?? nickname;
+  }, [participants, selfId, nickname]);
+
   // Sayfadan çıkınca bağlantıyı ve senkron motorunu kapat.
   useEffect(() => {
     return () => {
@@ -108,7 +113,7 @@ export function LobbyPage({ code, navigate }: Props) {
 
   // Aynı ad birden çok kişide olabilir; ifadede bir kez geçer.
   const refreshTyping = useCallback(() => {
-    const names = [...new Set(trackerRef.current.active(Date.now()))];
+    const names = trackerRef.current.active(Date.now());
     setTypingLabel(trackerRef.current.label(names));
   }, []);
 
@@ -403,7 +408,6 @@ export function LobbyPage({ code, navigate }: Props) {
   );
 
   const me = participants.find((p) => p.id === selfId);
-  myNicknameRef.current = me?.nickname ?? nickname;
   const isHost = me ? me.isHost : joinedAsHost;
   const canControl = !hostOnly || isHost;
   const conn = connRef.current;

@@ -95,7 +95,7 @@ src/
   sayfa görünür ve odakta olunca sıfırlanır. Ses kapalıyken de çalışır. Karar fonksiyonları `lib/notify.ts`'te.
 - "Yazıyor": sohbet kutusunda metin değişince en fazla 3 sn'de bir sunucuya `Typing()` gider (boş kutuda gönderilmez; hata yutulur).
   Sunucu durum tutmaz, çağıranın bağlantı kimliği ve takma adıyla `UserTyping` olayını diğerlerine iletir (`other` rate limit kovası).
-  İstemci (`lib/typing.ts` `TypingTracker`) bir kişiyi son bildirimden 5 sn sonra, o kişiden mesaj gelince ya da katılımcı listesinden çıkınca kaldırır.
+  İstemci (`lib/typing.ts` `TypingTracker`) aynı takma adı tek kez sayar ve bir kişiyi son bildirimden 5 sn sonra, o kişiden mesaj gelince ya da katılımcı listesinden çıkınca kaldırır.
   Metin: 1 kişi "<ad> yazıyor…", 2 kişi "<ad1> ve <ad2> yazıyor…", 3 ve üstü "<n> kişi yazıyor…".
 
 ## Bilinen sınırlar

@@ -41,7 +41,7 @@ export function playBlip(): void {
     if (!Ctor) return;
     ctx ??= new Ctor();
     const c = ctx;
-    c.resume?.().catch(() => {});
+    void Promise.resolve(c.resume?.()).catch(() => {});
     const t = c.currentTime;
     const osc = c.createOscillator();
     const gain = c.createGain();

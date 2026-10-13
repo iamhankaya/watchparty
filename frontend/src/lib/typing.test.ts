@@ -22,6 +22,13 @@ describe("TypingTracker", () => {
     t.remove("a");
     expect(t.active(1)).toEqual(["Veli"]);
   });
+  it("aynı takma adı iki kez göstermez", () => {
+    const t = new TypingTracker();
+    t.add("a", "Ali", 1000);
+    t.add("b", "Ali", 1000);
+    expect(t.active(1000)).toEqual(["Ali"]);
+    expect(t.label(t.active(1000))).toBe("Ali yazıyor…");
+  });
   it("etiket metinleri", () => {
     const t = new TypingTracker();
     expect(t.label([])).toBeNull();
@@ -38,5 +45,11 @@ describe("TypingThrottle", () => {
     expect(th.shouldSend(11_000)).toBe(false);
     expect(th.shouldSend(12_999)).toBe(false);
     expect(th.shouldSend(13_000)).toBe(true);
+  });
+  it("reset sonrası hemen izin verir", () => {
+    const th = new TypingThrottle();
+    expect(th.shouldSend(10_000)).toBe(true);
+    th.reset();
+    expect(th.shouldSend(10_100)).toBe(true);
   });
 });
