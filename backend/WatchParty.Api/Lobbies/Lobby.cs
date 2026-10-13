@@ -4,10 +4,24 @@ namespace WatchParty.Api.Lobbies;
 
 public enum JoinOutcome { Joined, Full, Closed }
 
+// Unchanged: değişiklik yok (oynamıyor, medya yok, kişi yok ya da zaten bekleniyor).
+// Started: kişi bekleme listesine eklendi, PlaybackUpdated yayınlanmalı.
+// Ignored: tekrar sınırı dolu, bu pencerede daha önce bildirildi; yayın yok.
+// IgnoredFirstTime: tekrar sınırı dolu, bu pencerede ilk kez; BufferingIgnored yayınlanmalı.
+public enum StartWaitingOutcome { Unchanged, Started, Ignored, IgnoredFirstTime }
+
+public record StartWaitingResult(StartWaitingOutcome Outcome, PlaybackState Playback);
+
 public class Lobby
 {
     public const int MaxParticipants = 20;
     public const int MaxChatHistory = 50;
+
+    // Takılan biri için tek seferde en fazla bu kadar beklenir.
+    public static readonly TimeSpan MaxWait = TimeSpan.FromSeconds(10);
+    // Aynı clientId bu pencere içinde MaxStrikes kez beklendiyse sonraki bildirimleri yok sayılır.
+    public static readonly TimeSpan StrikeWindow = TimeSpan.FromMinutes(5);
+    public const int MaxStrikes = 3;
 
     public Lobby(string code, string hostClientId, bool hostOnlyControl = false)
     {
@@ -35,6 +49,14 @@ public class Lobby
     public bool IsClosed { get; private set; }
 
     private readonly Queue<ChatMessage> _chat = new();
+
+    // Bekleme kayıtları; yalnızca Gate altında değişir.
+    // Aktif beklemeler: bağlantı kimliği -> başlangıç zamanı.
+    private readonly Dictionary<string, DateTimeOffset> _waits = new();
+    // Tekrar sayacı: clientId -> StrikeWindow içindeki bekleme başlangıçları (eskiden yeniye).
+    private readonly Dictionary<string, List<DateTimeOffset>> _strikes = new();
+    // Yok sayılma bildirildi: clientId -> bildirimin geçerli olduğu pencerenin sonu.
+    private readonly Dictionary<string, DateTimeOffset> _ignoredUntil = new();
 
     public JoinOutcome TryJoin(Participant participant)
     {
@@ -103,6 +125,92 @@ public class Lobby
             HostAwaySince = null;
             return nextHost;
         }
+    }
+
+    // Kişiyi bekleme listesine ekler. Liste boşken başlıyorsa konum o ana dondurulur;
+    // sonraki kişiler konumu yeniden hesaplamaz.
+    public StartWaitingResult StartWaiting(string connectionId, string clientId, DateTimeOffset now)
+    {
+        lock (Gate)
+        {
+            var playback = Playback;
+            if (playback.MediaId is null || !playback.IsPlaying || !Participants.ContainsKey(connectionId) || _waits.ContainsKey(connectionId))
+                return new(StartWaitingOutcome.Unchanged, playback);
+
+            if (!_strikes.TryGetValue(clientId, out var strikes))
+                _strikes[clientId] = strikes = [];
+            strikes.RemoveAll(t => now - t >= StrikeWindow);
+
+            if (strikes.Count >= MaxStrikes)
+            {
+                if (_ignoredUntil.TryGetValue(clientId, out var until) && until > now)
+                    return new(StartWaitingOutcome.Ignored, playback);
+
+                // En eski başlangıç pencereden çıkana kadar tekrar bildirilmez.
+                _ignoredUntil[clientId] = strikes[0] + StrikeWindow;
+                return new(StartWaitingOutcome.IgnoredFirstTime, playback);
+            }
+
+            var nowMs = now.ToUnixTimeMilliseconds();
+            if (playback.WaitingFor.Count == 0)
+                playback = playback with
+                {
+                    PositionSec = playback.PositionSec + (nowMs - playback.UpdatedAt) / 1000.0,
+                    UpdatedAt = nowMs,
+                };
+
+            _waits[connectionId] = now;
+            strikes.Add(now);
+            Playback = playback with { WaitingFor = [.. playback.WaitingFor, connectionId] };
+            return new(StartWaitingOutcome.Started, Playback);
+        }
+    }
+
+    // Kişiyi listeden çıkarır. Değişiklik yoksa null; varsa yayınlanacak yeni durum.
+    public PlaybackState? StopWaiting(string connectionId, DateTimeOffset now)
+    {
+        lock (Gate)
+        {
+            if (!_waits.Remove(connectionId))
+                return null;
+            return RemoveWaiters([connectionId], now);
+        }
+    }
+
+    // Listeyi boşaltır (oynatma komutu ya da "Beklemeden devam et"). Liste zaten boşsa null.
+    public PlaybackState? ClearWaiting(DateTimeOffset now)
+    {
+        lock (Gate)
+        {
+            _waits.Clear();
+            if (Playback.WaitingFor.Count == 0)
+                return null;
+            return RemoveWaiters(Playback.WaitingFor, now);
+        }
+    }
+
+    // MaxWait'i dolduran beklemeleri çıkarır. Değişiklik yoksa null.
+    public PlaybackState? ExpireWaits(DateTimeOffset now)
+    {
+        lock (Gate)
+        {
+            var expired = _waits.Where(w => now - w.Value >= MaxWait).Select(w => w.Key).ToList();
+            if (expired.Count == 0)
+                return null;
+            foreach (var id in expired)
+                _waits.Remove(id);
+            return RemoveWaiters(expired, now);
+        }
+    }
+
+    // Gate altında çağrılır. Liste boşalırsa devam: konum aynı, UpdatedAt = now.
+    private PlaybackState RemoveWaiters(IReadOnlyCollection<string> ids, DateTimeOffset now)
+    {
+        var remaining = Playback.WaitingFor.Where(id => !ids.Contains(id)).ToArray();
+        Playback = remaining.Length == 0
+            ? Playback with { WaitingFor = [], UpdatedAt = now.ToUnixTimeMilliseconds() }
+            : Playback with { WaitingFor = remaining };
+        return Playback;
     }
 
     public void AddChat(ChatMessage message)
