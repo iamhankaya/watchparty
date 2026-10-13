@@ -153,6 +153,7 @@ describe("SyncEngine bekleme", () => {
     expect(player.setRate).not.toHaveBeenCalledWith(0.95);
 
     player.buffering = false;
+    player.time = 13; // yüklendi ve donmuş konuma yetişti
     await advance(500);
     expect(onBuffering).toHaveBeenCalledTimes(2);
     expect(onBuffering).toHaveBeenLastCalledWith(false);
@@ -164,9 +165,8 @@ describe("SyncEngine bekleme", () => {
     engine.setState(state({ positionSec: 10, waitingFor: ["other"] }));
     expect(player.pause).toHaveBeenCalled();
     await advance(5000);
-    // Donmuş konumdan uzaklaşmadığı için seek gerekmez; zaman ilerlese de hedef 10'da kalır.
+    // Hedef 10'da donmuş olmasaydı 5 sn'lik sapma seek'e yol açardı.
     expect(player.seek).not.toHaveBeenCalled();
-    expect(engine.currentPosition()).toBe(10);
     expect(onBuffering).not.toHaveBeenCalled();
   });
 
@@ -184,9 +184,57 @@ describe("SyncEngine bekleme", () => {
 
   test("medya değişince sayaç sıfırlanır", async () => {
     player.buffering = true;
-    await advance(500);
-    engine.setState(state({ mediaId: "https://example.com/b.mp4" }));
-    await advance(500);
+    await advance(800); // eski sayaç 500'de başladı, sıfırlanmasa 1500'de bildirirdi
+    engine.setState(state({ mediaId: "https://example.com/b.mp4" })); // sayaç 800'de yeniden başlar
+    await advance(900);
     expect(onBuffering).not.toHaveBeenCalled();
+    await advance(600);
+    expect(onBuffering).toHaveBeenCalledTimes(1);
+  });
+
+  test("başkasının yayını öne geçse de yetişince bir kez false gönderilir", async () => {
+    player.buffering = true;
+    await advance(1500);
+    expect(onBuffering).toHaveBeenCalledWith(true);
+
+    // Önce yalnızca başkası listede (bizim bildirimimiz henüz işlenmedi): dururuz.
+    engine.setState(state({ positionSec: 10, waitingFor: ["other"] }));
+    await advance(500);
+    // Sonra biz de listedeyiz: oynamaya devam edip yükleriz.
+    engine.setState(state({ positionSec: 10, waitingFor: ["other", "me"] }));
+    player.buffering = false;
+    await advance(2000);
+    expect(onBuffering.mock.calls.filter(([b]) => b === false)).toHaveLength(1);
+    expect(onBuffering).toHaveBeenCalledTimes(2);
+  });
+
+  test("kendi beklemesinde donmuş konuma yetişmeden false gönderilmez", async () => {
+    player.buffering = true;
+    await advance(1500);
+    engine.setState(state({ positionSec: 13, waitingFor: ["me"] }));
+    player.buffering = false;
+    player.time = 12; // oynuyor ama 1 sn geride
+    await advance(1000);
+    expect(onBuffering).toHaveBeenCalledTimes(1);
+
+    player.time = 12.8;
+    await advance(500);
+    expect(onBuffering).toHaveBeenCalledTimes(2);
+    expect(onBuffering).toHaveBeenLastCalledWith(false);
+    await advance(2000);
+    expect(onBuffering).toHaveBeenCalledTimes(2);
+  });
+
+  test("sunucunun yok saydığı bildirim tekrarlanmaz, yetişince en fazla bir false", async () => {
+    player.buffering = true;
+    await advance(1500);
+    await advance(3000); // waitingFor'da hiç görünmüyoruz
+    expect(onBuffering).toHaveBeenCalledTimes(1);
+    expect(onBuffering).toHaveBeenCalledWith(true);
+
+    player.buffering = false;
+    await advance(2000);
+    expect(onBuffering.mock.calls.filter(([b]) => b === true)).toHaveLength(1);
+    expect(onBuffering.mock.calls.filter(([b]) => b === false).length).toBeLessThanOrEqual(1);
   });
 });

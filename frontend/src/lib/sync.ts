@@ -10,6 +10,7 @@ const RATE_TARGET = 0.08; // yakalamaya başlayınca bu kadar yaklaşana kadar d
 const SEEK_COOLDOWN_MS = 2000; // seek sonrası oynatıcı yüklenirken tekrar tekrar seek etmeyelim
 const BLOCKED_AFTER_TICKS = 4;
 const BUFFERING_REPORT_MS = 1000; // oynaması gerekirken bu kadar art arda takılan "takıldım" bildirir
+const CATCH_UP_MARGIN = 0.3; // kendi beklemesinde donmuş konuma bu kadar yaklaşınca "yetiştim" denir
 const TICK_MS = 500;
 
 /**
@@ -30,6 +31,7 @@ export class SyncEngine {
   private selfId: string | null = null;
   private bufferingSince: number | null = null; // art arda takılmanın başladığı an (Date.now)
   private reportedBuffering = false; // onBuffering(true) gönderildi, henüz false gönderilmedi
+  private recoverySent = false; // listede olduğumuz durum için false gönderildi; sonraki setState'te temizlenir
 
   constructor(
     private clock: ServerClock,
@@ -69,6 +71,7 @@ export class SyncEngine {
       this.reportedBuffering = false;
     }
     this.state = state;
+    this.recoverySent = false;
     this.lastSeekAt = 0; // açık bir değişiklik geldi, bekleme süresini yok say
     this.notPlayingTicks = 0;
     this.tick();
@@ -100,7 +103,11 @@ export class SyncEngine {
   private tick() {
     const p = this.player;
     const s = this.state;
-    if (!p || !s?.mediaId || !p.isReady()) return;
+    if (!p || !s?.mediaId || !p.isReady()) {
+      // Oynatıcı hazır değilken eski bir başlangıç anı kalırsa hazır olunca anında bildirim giderdi.
+      this.bufferingSince = null;
+      return;
+    }
 
     const duration = p.getDuration();
     let target = expectedPosition(s, this.clock.now());
@@ -128,7 +135,7 @@ export class SyncEngine {
       this.setBlocked(false);
     }
 
-    this.trackBuffering(p, shouldPlay);
+    this.trackBuffering(p, shouldPlay, selfWaiting, target);
 
     if (selfWaiting) {
       // Herkes bizi bekliyor: donmuş konuma göre seek/hız düzeltmesi yapma, sadece yüklemeye devam et.
@@ -163,25 +170,41 @@ export class SyncEngine {
     }
   }
 
-  /** Art arda BUFFERING_REPORT_MS takılmada bir kez true, takılma bitip oynayınca bir kez false bildirir. */
-  private trackBuffering(p: Player, shouldPlay: boolean) {
+  /**
+   * Art arda BUFFERING_REPORT_MS takılmada bir kez true bildirir. Takılma bitip oynayınca bir kez false
+   * bildirir; listede (waitingFor) olduğumuzda ise ancak donmuş konuma yetişince. Listede olmak da
+   * "bildirilmiş" sayılır: başka birinin yayını bizimkinden önce gelip bayrağı kaybettirse bile false gider.
+   */
+  private trackBuffering(p: Player, shouldPlay: boolean, selfWaiting: boolean, target: number) {
     if (!shouldPlay) {
-      // Oynaması gerekmiyorsa (durdu, bitti, başkası bekleniyor) takılma anlamsız.
+      // Oynaması gerekmiyorsa (durdu, bitti, başkası bekleniyor) takılma sayılmaz. Bildirim bayrağı
+      // korunur; yalnızca medya/oynat-durdur değişimi ve setSelfId sıfırlar.
       this.bufferingSince = null;
-      this.reportedBuffering = false;
       return;
     }
     const now = Date.now();
     if (!this.blocked && p.isBuffering()) {
       this.bufferingSince ??= now;
-      if (!this.reportedBuffering && now - this.bufferingSince >= BUFFERING_REPORT_MS) {
+      if (
+        !this.reportedBuffering &&
+        !selfWaiting &&
+        now - this.bufferingSince >= BUFFERING_REPORT_MS
+      ) {
         this.reportedBuffering = true;
         this.onBuffering(true);
       }
       return;
     }
     this.bufferingSince = null;
-    if (this.reportedBuffering && p.isPlaying() && !p.isBuffering()) {
+    if (!p.isPlaying() || p.isBuffering()) return;
+    if (selfWaiting) {
+      // Sunucu konumu diğerlerinin bulunduğu yerde dondurdu; oraya yetişmeden devam dersek geride kalırız
+      // (YouTube'da yakalama seek'i yeniden takılır). Beklemenin üst sınırı sunucudaki MaxWait.
+      if (this.recoverySent || p.getTime() < target - CATCH_UP_MARGIN) return;
+      this.recoverySent = true;
+      this.reportedBuffering = false;
+      this.onBuffering(false);
+    } else if (this.reportedBuffering) {
       this.reportedBuffering = false;
       this.onBuffering(false);
     }
