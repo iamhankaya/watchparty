@@ -34,3 +34,8 @@ output "github_deploy_role_arn" {
   description = "GitHub Actions'ın üstleneceği deploy rolü (repo değişkeni AWS_DEPLOY_ROLE_ARN)"
   value       = aws_iam_role.github_deploy.arn
 }
+
+output "video_bucket" {
+  description = "Videoların yüklendiği bucket (30 gün sonra silinir; /videolar/* buradan servis edilir)"
+  value       = aws_s3_bucket.videos.bucket
+}
