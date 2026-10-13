@@ -51,7 +51,7 @@ Kaynak: 2026-10-13 brainstorming'i. Bir izleyicinin oynatıcısı oynaması gere
 - `types.ts`: `PlaybackState.waitingFor: string[]`; `expectedPosition`: `isPlaying && waitingFor.length > 0` ise `positionSec`.
 - `SyncEngine` (`setSelfId(id)` ile kendi kimliğini bilir; yeni geri çağırma `onBuffering(buffering: boolean)`):
   - Oynaması gerekirken (`shouldPlay`) ve otomatik oynatma engeli yokken `isBuffering()` art arda **1 sn** sürerse bir kez `onBuffering(true)`.
-  - Kendisi `waitingFor`'daysa: donmuş konuma göre sapma düzeltmesi (seek/hız) **yapılmaz**, yalnızca oynatmaya devam eder; `isBuffering()` bitip oynamaya başlayınca bir kez `onBuffering(false)`. Devam sonrası küçük ileri sapmayı mevcut hız düzeltmesi toplar.
+  - Kendisi `waitingFor`'daysa: donmuş konuma göre sapma düzeltmesi (seek/hız) **yapılmaz**, yalnızca oynatmaya devam eder; `onBuffering(false)` yalnızca oynatıcı donmuş hedefe yetişince (oynatıcı konumu >= donmuş hedef − 0,3 sn) ve oynuyorken bir kez gönderilir. Devam eden istemci donmuş konumun biraz gerisindedir; MP4'te hız düzeltmesi farkı kapatır, YouTube'da ~0,3–0,5 sn fark kalabilir.
   - Başkaları bekleniyorsa: hedef konum donar (`expectedPosition`), oynatıcı mevcut mantıkla duraklar ve konumu tutar.
   - Medya/oynatıcı değişince ve bağlantı kopunca iç sayaçlar sıfırlanır; yeniden bağlanınca sunucu kişiyi zaten listeden çıkarmıştır.
 - `LobbyConnection`: `reportBuffering(buffering)`, `skipWaiting()`, olay `bufferingIgnored(nickname)`. Mock aynı kuralları uygular.

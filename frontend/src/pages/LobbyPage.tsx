@@ -4,17 +4,22 @@ import { ServerClock } from "../lib/clock";
 import { createLobbyConnection, type LobbyConnection } from "../lib/connection";
 import { describeConnectionError, errorMessage } from "../lib/errors";
 import {
+  getChatSoundOn,
   getClientId,
   getNickname,
   getSubtitlesOn,
   getVolume,
+  saveChatSoundOn,
   saveNickname,
   saveSubtitlesOn,
   saveVolume,
   type VolumeSetting,
 } from "../lib/identity";
+import { isChatVisible, playBlip, shouldNotify, titleWithCount } from "../lib/notify";
 import { lockLandscape, unlockOrientation } from "../lib/orientation";
 import { SyncEngine } from "../lib/sync";
+import { genitive } from "../lib/turkish";
+import { TypingTracker } from "../lib/typing";
 import {
   expectedPosition,
   MAX_NICKNAME,
@@ -32,6 +37,7 @@ import { Chat } from "../components/Chat";
 import { LobbyStrip } from "../components/LobbyStrip";
 import { SidePanel } from "../components/SidePanel";
 import { CodeBoard } from "../components/CodeBoard";
+import { WaitingBanner } from "../components/WaitingBanner";
 
 interface Props {
   code: string;
@@ -61,6 +67,10 @@ export function LobbyPage({ code, navigate }: Props) {
   const [subtitlesOn, setSubtitlesOn] = useState(getSubtitlesOn);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [chatOpen, setChatOpen] = useState(true);
+  const [soundOn, setSoundOn] = useState(getChatSoundOn);
+  // Sayfa gizliyken ya da odakta değilken gelen başkalarının mesajları (sekme başlığında gösterilir).
+  const [unread, setUnread] = useState(0);
+  const [typingLabel, setTypingLabel] = useState<string | null>(null);
 
   const connRef = useRef<LobbyConnection | null>(null);
   const clockRef = useRef(new ServerClock());
@@ -68,6 +78,17 @@ export function LobbyPage({ code, navigate }: Props) {
   const playerRef = useRef<Player | null>(null);
   const volumeRef = useRef(volume);
   const theaterRef = useRef<HTMLDivElement>(null);
+  // Bağlantı olayları join() kapanışında çalışır; güncel değerleri ref'lerden okurlar.
+  const myNicknameRef = useRef(nickname);
+  const soundOnRef = useRef(soundOn);
+  const fullscreenRef = useRef(false);
+  const chatOpenRef = useRef(true);
+  const lastSoundAtRef = useRef(-Infinity);
+  // Sayaç eklenmeden önceki özgün başlık (titleWithCount mevcut öneki ayıklamaz).
+  const baseTitleRef = useRef(document.title);
+  const trackerRef = useRef(new TypingTracker());
+  // Yazanların kimlik -> takma ad eşlemesi: mesajı gelince ya da lobiden çıkınca takipçiden silmek için.
+  const typingIdsRef = useRef(new Map<string, string>());
 
   const showError = useCallback((e: unknown) => setToast({ text: errorMessage(e), kind: "error" }), []);
 
@@ -77,6 +98,11 @@ export function LobbyPage({ code, navigate }: Props) {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // Kendi takma adım: katılımcı listesindeki ad, yoksa girilen ad (olay kapanışları ref'ten okur).
+  useEffect(() => {
+    myNicknameRef.current = participants.find((p) => p.id === selfId)?.nickname ?? nickname;
+  }, [participants, selfId, nickname]);
+
   // Sayfadan çıkınca bağlantıyı ve senkron motorunu kapat.
   useEffect(() => {
     return () => {
@@ -84,6 +110,39 @@ export function LobbyPage({ code, navigate }: Props) {
       void connRef.current?.stop();
     };
   }, []);
+
+  // Aynı ad birden çok kişide olabilir; ifadede bir kez geçer.
+  const refreshTyping = useCallback(() => {
+    const names = trackerRef.current.active(Date.now());
+    setTypingLabel(trackerRef.current.label(names));
+  }, []);
+
+  const forgetTyping = useCallback((id: string) => {
+    trackerRef.current.remove(id);
+    typingIdsRef.current.delete(id);
+  }, []);
+
+  // Yeni sohbet mesajı (geçmiş değil): ses, sekme sayacı ve yazanın "yazıyor" ifadesi.
+  const handleIncoming = useCallback(
+    (m: ChatMessage) => {
+      // ChatMessage'da kimlik yok; Chat'teki "mine" ölçütüyle aynı şekilde ada göre eşleriz.
+      for (const [id, name] of typingIdsRef.current) if (name === m.nickname) forgetTyping(id);
+      refreshTyping();
+
+      if (m.nickname === myNicknameRef.current) return;
+      const hidden = document.hidden;
+      const focused = document.hasFocus();
+      const now = Date.now();
+      const visible = isChatVisible({ hidden, focused, fullscreen: fullscreenRef.current, chatOpen: chatOpenRef.current });
+      if (shouldNotify({ fromSelf: false, history: false, visible, soundOn: soundOnRef.current, lastSoundAt: lastSoundAtRef.current, now })) {
+        lastSoundAtRef.current = now;
+        playBlip();
+      }
+      // Sayaç ses ayarından bağımsızdır.
+      if (hidden || !focused) setUnread((n) => n + 1);
+    },
+    [forgetTyping, refreshTyping],
+  );
 
   const join = useCallback(
     async (nick: string, reconnect = false) => {
@@ -96,13 +155,23 @@ export function LobbyPage({ code, navigate }: Props) {
         setPhase("joining");
       }
 
-      const engine = new SyncEngine(clockRef.current, setBlocked);
+      // Takılma bildirimi otomatiktir; hatası (ör. rate limit, kopuk bağlantı) kullanıcıya gösterilmez.
+      let conn: LobbyConnection | null = null;
+      const engine = new SyncEngine(clockRef.current, setBlocked, (buffering) => {
+        conn?.reportBuffering(buffering).catch(() => {});
+      });
       engineRef.current = engine;
       engine.start();
       engine.setPlayer(playerRef.current);
 
-      const conn = createLobbyConnection({
-        participantsChanged: setParticipants,
+      conn = createLobbyConnection({
+        participantsChanged: (list) => {
+          setParticipants(list);
+          // Lobiden çıkan kişinin "yazıyor" ifadesi hemen kalkar.
+          const ids = new Set(list.map((p) => p.id));
+          for (const id of typingIdsRef.current.keys()) if (!ids.has(id)) forgetTyping(id);
+          refreshTyping();
+        },
         playbackUpdated: (s) => {
           setPlayback(s);
           engine.setState(s);
@@ -110,13 +179,34 @@ export function LobbyPage({ code, navigate }: Props) {
         controlModeChanged: setHostOnly,
         hostChanged: (name) => setToast({ text: `Yeni host: ${name}`, kind: "info" }),
         chatHistory: setChat,
-        chatMessage: (m) => setChat((list) => [...list, m].slice(-200)),
+        chatMessage: (m) => {
+          setChat((list) => [...list, m].slice(-200));
+          handleIncoming(m);
+        },
+        userTyping: (id, name) => {
+          trackerRef.current.add(id, name, Date.now());
+          typingIdsRef.current.set(id, name);
+          refreshTyping();
+        },
+        bufferingIgnored: (name) => {
+          const owner = genitive(name);
+          const text = name === getNickname()
+            ? "Bağlantın yavaş; senin için beklenmeyecek"
+            : owner ? `${owner} bağlantısı yavaş; beklenmeyecek` : `Bağlantısı yavaş: ${name} beklenmeyecek`;
+          setToast({ text, kind: "info" });
+        },
         joined: (r) => {
+          // İlk katılımda ve her yeniden katılımda yeni selfId gelir.
+          engine.setSelfId(r.selfId);
           setSelfId(r.selfId);
           setJoinedAsHost(r.isHost);
         },
-        // Eski bağlantının geç gelen olayları yeni bağlantının durumunu ezmesin.
-        statusChanged: (st) => connRef.current === conn && setStatus(st),
+        statusChanged: (st) => {
+          // Kopunca kimliğimiz geçersizdir; motorun takılma sayaçları sıfırlansın (yeniden katılınca yenisi gelir).
+          if (st === "reconnecting" || st === "disconnected") engine.setSelfId(null);
+          // Eski bağlantının geç gelen olayları yeni bağlantının durumunu ezmesin.
+          if (connRef.current === conn) setStatus(st);
+        },
         connectionLost: (reason) => {
           if (connRef.current !== conn) return;
           setLostReason(reason);
@@ -148,7 +238,7 @@ export function LobbyPage({ code, navigate }: Props) {
         if (reconnect) setRetrying(false);
       }
     },
-    [code],
+    [code, handleIncoming, refreshTyping, forgetTyping],
   );
 
   // 1) Lobi var mı, dolu mu?
@@ -184,6 +274,42 @@ export function LobbyPage({ code, navigate }: Props) {
     }, 30000);
     return () => clearInterval(t);
   }, [phase]);
+
+  // "Yazıyor" ifadesi 5 sn sonra kendiliğinden kalksın diye saniyede bir tazelenir.
+  useEffect(() => {
+    if (phase !== "joined") return;
+    const t = setInterval(refreshTyping, 1000);
+    return () => clearInterval(t);
+  }, [phase, refreshTyping]);
+
+  // Sekme başlığında okunmamış sayacı; sayfa görünür ve odaktayken sıfırlanır.
+  useEffect(() => {
+    document.title = titleWithCount(baseTitleRef.current, unread);
+  }, [unread]);
+
+  useEffect(() => {
+    const reset = () => {
+      if (!document.hidden && document.hasFocus()) setUnread(0);
+    };
+    document.addEventListener("visibilitychange", reset);
+    window.addEventListener("focus", reset);
+    const baseTitle = baseTitleRef.current;
+    return () => {
+      document.removeEventListener("visibilitychange", reset);
+      window.removeEventListener("focus", reset);
+      document.title = baseTitle;
+    };
+  }, []);
+
+  useEffect(() => {
+    soundOnRef.current = soundOn;
+    saveChatSoundOn(soundOn);
+  }, [soundOn]);
+
+  useEffect(() => {
+    fullscreenRef.current = isFullscreen;
+    chatOpenRef.current = chatOpen;
+  }, [isFullscreen, chatOpen]);
 
   const handlePlayer = useCallback((p: Player | null) => {
     playerRef.current = p;
@@ -289,12 +415,27 @@ export function LobbyPage({ code, navigate }: Props) {
   const serverPosition = () => (playback ? expectedPosition(playback, clockRef.current.now()) : 0);
 
   const chatBox = (
-    <Chat messages={chat} myNickname={me?.nickname ?? nickname} onSend={(text) => conn?.sendChat(text).catch((err) => { showError(err); throw err; })} />
+    <Chat
+      messages={chat}
+      myNickname={me?.nickname ?? nickname}
+      onSend={(text) => conn?.sendChat(text).catch((err) => { showError(err); throw err; })}
+      onTyping={() => conn?.typing()}
+      typingLabel={typingLabel}
+      soundOn={soundOn}
+      onToggleSound={() => setSoundOn((on) => !on)}
+    />
   );
 
   const theater = (
     <div ref={theaterRef} className={`theater${isFullscreen ? " is-fullscreen" : ""}${isFullscreen && chatOpen ? " with-chat" : ""}`}>
       <div className="theater-main">
+        <WaitingBanner
+          playback={playback}
+          participants={participants}
+          selfId={selfId}
+          canControl={canControl}
+          onSkip={() => conn?.skipWaiting().catch(showError)}
+        />
         <PlayerArea
           playback={playback}
           onPlayer={handlePlayer}
