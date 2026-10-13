@@ -14,6 +14,8 @@ interface Props {
   onSeek(sec: number): void;
   volume: VolumeSetting;
   onVolume(v: VolumeSetting): void;
+  subtitlesOn: boolean;
+  onToggleSubtitles(): void;
   isFullscreen: boolean;
   onToggleFullscreen(): void;
   chatOpen: boolean;
@@ -93,6 +95,17 @@ export function Controls(props: Props) {
         />
       </div>
 
+      {/* Altyazı açık/kapalı da kişiye özel, sunucuya gitmez. */}
+      {playback?.mediaType === "file" && playback.subtitleUrl && (
+        <button
+          className={`icon small${props.subtitlesOn ? " active" : ""}`}
+          onClick={props.onToggleSubtitles}
+          aria-pressed={props.subtitlesOn}
+          title="Altyazı"
+        >
+          <Icon name="cc" />
+        </button>
+      )}
       {props.isFullscreen && (
         <button className={`icon small${props.chatOpen ? " active" : ""}`} onClick={props.onToggleChat} title="Sohbeti göster/gizle">
           <Icon name="chat" />
