@@ -119,6 +119,11 @@ def indir(url: str, klasor: Path, maks_yukseklik: int | None) -> tuple[Path, str
         "restrictfilenames": True,
         # YouTube JS doğrulamaları için; frontend için zaten kurulu olan Node da kullanılabilsin.
         "js_runtimes": {"deno": {}, "node": {}},
+        # Uzun videolarda bağlantı kopabiliyor; beklemeli yeniden dene, yarım .part dosyasından devam et.
+        "retries": 30,
+        "fragment_retries": 30,
+        "retry_sleep_functions": {"http": lambda n: min(2 ** n, 30), "fragment": lambda n: min(2 ** n, 30)},
+        "continuedl": True,
     }
     try:
         with yt_dlp.YoutubeDL(ayarlar) as ydl:
