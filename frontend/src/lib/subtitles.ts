@@ -39,7 +39,7 @@ export function parseSubtitles(text: string): Cue[] {
     const start = parseTime(a.trim());
     const end = parseTime(rest.trim().split(/\s+/)[0] ?? "");
     if (start === null || end === null || end <= start) continue;
-    const body = lines.slice(i + 1).join("\n").replace(/\{\[^}]*\}/g, "").trim();
+    const body = lines.slice(i + 1).join("\n").replace(/\{\\[^}]*\}/g, "").trim();
     if (body) cues.push({ start, end, text: body });
   }
   return cues;

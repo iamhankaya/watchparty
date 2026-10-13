@@ -37,8 +37,8 @@ describe("parseSubtitles", () => {
     const s = "1\n00:00:01,000 --> abc\nbozuk\n\n2\n00:00:03,000 --> 00:00:04,000\niyi\n";
     expect(parseSubtitles(s)).toEqual([{ start: 3, end: 4, text: "iyi" }]);
   });
-  test("{\an8} silinir, <i> kalır", () =>
-    expect(parseSubtitles("1\n00:00:01,000 --> 00:00:02,000\n{\an8}<i>Üst</i>\n")[0].text).toBe("<i>Üst</i>"));
+  test("{\\an8} silinir, <i> kalır", () =>
+    expect(parseSubtitles("1\n00:00:01,000 --> 00:00:02,000\n{\\an8}<i>Üst</i>\n")[0].text).toBe("<i>Üst</i>"));
   test("boş metin → []", () => {
     expect(parseSubtitles("")).toEqual([]);
     expect(parseSubtitles("\n\n  \n")).toEqual([]);
