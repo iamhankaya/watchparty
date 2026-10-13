@@ -3,7 +3,16 @@ import { getLobby } from "../lib/api";
 import { ServerClock } from "../lib/clock";
 import { createLobbyConnection, type LobbyConnection } from "../lib/connection";
 import { describeConnectionError, errorMessage } from "../lib/errors";
-import { getClientId, getNickname, getVolume, saveNickname, saveVolume, type VolumeSetting } from "../lib/identity";
+import {
+  getClientId,
+  getNickname,
+  getSubtitlesOn,
+  getVolume,
+  saveNickname,
+  saveSubtitlesOn,
+  saveVolume,
+  type VolumeSetting,
+} from "../lib/identity";
 import { lockLandscape, unlockOrientation } from "../lib/orientation";
 import { SyncEngine } from "../lib/sync";
 import {
@@ -49,6 +58,7 @@ export function LobbyPage({ code, navigate }: Props) {
   const [lostReason, setLostReason] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [volume, setVolume] = useState<VolumeSetting>(getVolume);
+  const [subtitlesOn, setSubtitlesOn] = useState(getSubtitlesOn);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [chatOpen, setChatOpen] = useState(true);
 
@@ -291,6 +301,7 @@ export function LobbyPage({ code, navigate }: Props) {
           onError={showError}
           blocked={blocked}
           canControl={canControl && !!playback?.mediaId}
+          subtitlesOn={subtitlesOn}
           onTogglePlay={() =>
             (playback?.isPlaying ? conn?.pause(serverPosition()) : conn?.play(serverPosition()))?.catch(showError)
           }
@@ -306,6 +317,12 @@ export function LobbyPage({ code, navigate }: Props) {
           onSeek={(sec) => conn?.seek(sec).catch(showError)}
           volume={volume}
           onVolume={setVolume}
+          subtitlesOn={subtitlesOn}
+          onToggleSubtitles={() => {
+            // Kişisel ayar: yalnızca bu tarayıcıda hatırlanır, sunucuya gitmez.
+            saveSubtitlesOn(!subtitlesOn);
+            setSubtitlesOn(!subtitlesOn);
+          }}
           isFullscreen={isFullscreen}
           onToggleFullscreen={toggleFullscreen}
           chatOpen={chatOpen}
@@ -322,7 +339,20 @@ export function LobbyPage({ code, navigate }: Props) {
     </div>
   );
 
-  const mediaPicker = <MediaPicker disabled={!canControl} onSubmit={(type, id) => conn?.setMedia(type, id).catch(showError)} />;
+  // Hata gösterilir ve yeniden fırlatılır: seçici, video başarısızsa altyazıyı göndermesin.
+  const reportFailure = (p: Promise<void> | undefined) =>
+    (p ?? Promise.resolve()).catch((err) => {
+      showError(err);
+      throw err;
+    });
+  const mediaPicker = (
+    <MediaPicker
+      disabled={!canControl}
+      playback={playback}
+      onSetMedia={(type, id) => reportFailure(conn?.setMedia(type, id))}
+      onSetSubtitle={(url) => reportFailure(conn?.setSubtitle(url))}
+    />
+  );
   const hostOnlyNote = !canControl && <p className="muted small">Bu lobide oynatmayı sadece host kontrol ediyor.</p>;
   const hostSettings = isHost && (
     <div className="card host-settings">

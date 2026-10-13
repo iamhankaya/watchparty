@@ -106,6 +106,27 @@ ok((await err(guest.conn.invoke("Play", 40))) === null, "new host can control");
 ok((await err(late.conn.invoke("Play", 41)))?.includes("Sadece host"), "others still blocked");
 await guest.conn.stop(); await late.conn.stop();
 
+// altyazı
+const { code: c4 } = await (await create({ clientId: "h4" })).json();
+const sh = await client("Host"), sg = await client("Misafir");
+await sh.conn.invoke("JoinLobby", c4, "Host", "h4");
+await sg.conn.invoke("JoinLobby", c4, "Misafir", "g4");
+ok((await err(sh.conn.invoke("SetSubtitle", "https://example.com/a.srt")))?.includes("medya"), "subtitle without media rejected");
+await sh.conn.invoke("SetMedia", "youtube", "dQw4w9WgXcQ");
+ok((await err(sh.conn.invoke("SetSubtitle", "https://example.com/a.srt")))?.includes("yalnızca MP4"), "subtitle on YouTube rejected");
+await sh.conn.invoke("SetMedia", "file", "https://example.com/a.mp4");
+await sh.conn.invoke("SetSubtitle", "https://example.com/a.srt");
+await sleep(200);
+ok(sg.ev.playback.at(-1)?.subtitleUrl === "https://example.com/a.srt", "subtitleUrl broadcast to other client");
+const sl = await client("Gec");
+await sl.conn.invoke("JoinLobby", c4, "Gec", "l4");
+await sleep(200);
+ok(sl.ev.playback.at(-1)?.subtitleUrl === "https://example.com/a.srt", "late joiner gets subtitleUrl");
+await sh.conn.invoke("SetMedia", "file", "https://example.com/b.mp4");
+await sleep(200);
+ok(sg.ev.playback.at(-1)?.subtitleUrl === null, "SetMedia resets subtitle");
+for (const c of [sh, sg, sl]) await c.conn.stop();
+
 // limit 20
 const { code: c3 } = await (await create({ clientId: "h3" })).json();
 const many = [];

@@ -1,11 +1,11 @@
 /**
  * Backend olmadan geliştirme için sahte sunucu (npm run dev:mock).
  * Aynı tarayıcıdaki sekmeler localStorage + BroadcastChannel ile ortak bir "sunucu" paylaşır.
- * Hub'daki kurallar taklit edilir: 20 kişi sınırı, sadece-host modu, host devri.
+ * Hub'daki kurallar taklit edilir: 20 kişi sınırı, sadece-host modu, host devri, altyazı kuralları.
  */
 import type { LobbyConnection, LobbyEvents } from "./connection";
 import type { ChatMessage, JoinResult, MediaType, Participant, PlaybackState } from "./types";
-import { MAX_PARTICIPANTS } from "./types";
+import { MAX_MEDIA_ID, MAX_PARTICIPANTS } from "./types";
 
 interface MockLobby {
   code: string;
@@ -40,6 +40,15 @@ function load<T>(key: string): T | null {
   return raw ? (JSON.parse(raw) as T) : null;
 }
 const save = (key: string, value: unknown) => localStorage.setItem(key, JSON.stringify(value));
+// MediaValidator.ValidateSubtitle: mutlak https URL, baş/son boşluk yok.
+function isHttpsUrl(s: string): boolean {
+  if (s !== s.trim()) return false;
+  try {
+    return new URL(s).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
 const delay = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
 function activePresence(code: string): Record<string, Presence> {
@@ -67,7 +76,7 @@ export const mockApi = {
       createdAt: new Date().toISOString(),
       hostClientId: clientId,
       hostOnlyControl,
-      playback: { mediaType: null, mediaId: null, isPlaying: false, positionSec: 0, updatedAt: Date.now() },
+      playback: { mediaType: null, mediaId: null, isPlaying: false, positionSec: 0, updatedAt: Date.now(), subtitleUrl: null },
       chat: [],
     };
     save(lobbyKey(code), lobby);
@@ -214,10 +223,27 @@ export class MockLobbyConnection implements LobbyConnection {
   }
 
   setMedia = (type: MediaType, id: string) =>
-    this.update(() => ({ mediaType: type, mediaId: id, isPlaying: false, positionSec: 0 }));
+    this.update(() => ({ mediaType: type, mediaId: id, isPlaying: false, positionSec: 0, subtitleUrl: null }));
   play = (pos: number) => this.update(() => ({ isPlaying: true, positionSec: pos }));
   pause = (pos: number) => this.update(() => ({ isPlaying: false, positionSec: pos }));
   seek = (pos: number) => this.update(() => ({ positionSec: pos }));
+
+  /** Hub'daki SetSubtitle ile aynı kural sırası: doğrulama → lobi → sadece-host → medya var → medya MP4. */
+  async setSubtitle(url: string | null) {
+    await delay();
+    if (!url) url = null;
+    else if (!isHttpsUrl(url)) throw new Error("HubException: Altyazı adresi https:// ile başlamalı");
+    else if (url.length > MAX_MEDIA_ID) throw new Error("HubException: Altyazı adresi en fazla 200 karakter olmalı");
+    const lobby = this.lobby();
+    if (lobby.hostOnlyControl && lobby.hostClientId !== this.clientId)
+      throw new Error("HubException: Sadece host kontrol edebilir");
+    if (!lobby.playback.mediaId) throw new Error("HubException: Önce bir medya seç");
+    if (lobby.playback.mediaType !== "file") throw new Error("HubException: Altyazı yalnızca MP4 videolarda kullanılabilir");
+    // Konum ve updatedAt değişmez: aksi halde oynarken herkes geri atlardı.
+    lobby.playback = { ...lobby.playback, subtitleUrl: url };
+    save(lobbyKey(lobby.code), lobby);
+    this.broadcast({ type: "playback", code: lobby.code, state: lobby.playback });
+  }
 
   async setControlMode(hostOnly: boolean) {
     await delay();
