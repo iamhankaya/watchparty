@@ -1,4 +1,5 @@
 import type { Participant, PlaybackState } from "../lib/types";
+import { genitive } from "../lib/turkish";
 
 interface Props {
   playback: PlaybackState | null;
@@ -15,7 +16,10 @@ export function waitingText(waitingFor: string[], participants: Participant[], s
   const others = waitingFor.filter((id) => id !== selfId);
   if (others.length === 1) {
     const name = participants.find((p) => p.id === others[0])?.nickname;
-    if (name) return `${name}'nin videosu yükleniyor…`;
+    if (name) {
+      const owner = genitive(name);
+      return owner ? `${owner} videosu yükleniyor…` : `${name} bekleniyor, videosu yükleniyor…`;
+    }
   }
   return `${others.length} kişi bekleniyor…`;
 }

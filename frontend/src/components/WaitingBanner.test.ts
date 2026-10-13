@@ -13,7 +13,11 @@ describe("waitingText", () => {
   });
 
   it("tek kişi adıyla", () => {
-    expect(waitingText(["c"], people, "a")).toBe("Can'nin videosu yükleniyor…");
+    expect(waitingText(["c"], people, "a")).toBe("Can'ın videosu yükleniyor…");
+  });
+
+  it("ünlüsüz adda eksiz metin", () => {
+    expect(waitingText(["x1"], [{ id: "x1", nickname: "X1", isHost: false }], "a")).toBe("X1 bekleniyor, videosu yükleniyor…");
   });
 
   it("birden fazla kişi sayıyla", () => {

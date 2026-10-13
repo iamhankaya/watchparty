@@ -15,6 +15,7 @@ import {
 } from "../lib/identity";
 import { lockLandscape, unlockOrientation } from "../lib/orientation";
 import { SyncEngine } from "../lib/sync";
+import { genitive } from "../lib/turkish";
 import {
   expectedPosition,
   MAX_NICKNAME,
@@ -116,7 +117,11 @@ export function LobbyPage({ code, navigate }: Props) {
         hostChanged: (name) => setToast({ text: `Yeni host: ${name}`, kind: "info" }),
         chatHistory: setChat,
         chatMessage: (m) => setChat((list) => [...list, m].slice(-200)),
-        bufferingIgnored: (name) => setToast({ text: `${name}'nin bağlantısı yavaş; beklenmeyecek`, kind: "info" }),
+        bufferingIgnored: (name) => {
+          const owner = genitive(name);
+          const text = owner ? `${owner} bağlantısı yavaş; beklenmeyecek` : `Bağlantısı yavaş: ${name} beklenmeyecek`;
+          setToast({ text, kind: "info" });
+        },
         joined: (r) => {
           // İlk katılımda ve her yeniden katılımda yeni selfId gelir.
           engine.setSelfId(r.selfId);
