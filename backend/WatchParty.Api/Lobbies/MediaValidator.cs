@@ -25,4 +25,14 @@ public static partial class MediaValidator
             ? null
             : "Video adresi https:// ile başlamalı";
     }
+
+    /// <summary>Altyazı adresi geçerliyse null, değilse Türkçe hata mesajı döner. Boş değer çağıran tarafça kaldırma sayılır.</summary>
+    public static string? ValidateSubtitle(string? url)
+    {
+        if (url is null || url != url.Trim() || !Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+            return "Altyazı adresi https:// ile başlamalı";
+        if (url.Length > MaxIdLength)
+            return "Altyazı adresi en fazla 200 karakter olmalı";
+        return null;
+    }
 }

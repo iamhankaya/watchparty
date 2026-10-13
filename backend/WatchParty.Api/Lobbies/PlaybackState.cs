@@ -5,8 +5,9 @@ public record PlaybackState(
     string? MediaId,
     bool IsPlaying,
     double PositionSec,
-    long UpdatedAt)
+    long UpdatedAt,
+    string? SubtitleUrl = null)
 {
     public static long Now() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-    public static PlaybackState Empty => new(null, null, false, 0, Now());
+    public static PlaybackState Empty => new(null, null, false, 0, Now(), null);
 }
