@@ -54,6 +54,14 @@ src/
 - Oynatıcının kendi kontrolleri kapalı (YouTube `controls=0`, üstünde tıklama kalkanı). Oynat/durdur/sar
   sadece bizim butonlardan sunucuya gider; oynatıcı olayları hiç sunucuya geri gönderilmez.
   Bu, "kodla yapılan seek'in tekrar herkese yayılması" döngüsünü tamamen engeller.
+- Takılana göre bekleme: oynaması gerekirken (`shouldPlay`, otomatik oynatma engeli yokken) `Player.isBuffering()`
+  art arda 1 sn doğruysa `SyncEngine` bir kez `onBuffering(true)` der ve istemci bunu sunucuya `reportBuffering` ile iletir;
+  yetişince `false` bildirir. Sunucu `waitingFor` doluyken konumu dondurur (`expectedPosition` donmuş `positionSec` döner),
+  diğer izleyiciler duraklayıp konumu tutar. Kendi bağlantın `waitingFor`'dayken sapma düzeltmesi (seek/hız) **yapılmaz**,
+  yalnızca oynatmaya devam edilir; devamdan sonraki küçük ileri sapmayı hız düzeltmesi toplar.
+  Bu, "oynatıcı olayları sunucuya gitmez" kuralının tek istisnasıdır (yalnızca "takıldım / yetiştim"; konum, seek, oynat/durdur gitmez).
+  Bekleme bir kişi için en fazla 10 sn sürer; aynı kişi 5 dk içinde 3 kez beklenirse sonrakiler yok sayılır ve lobiye
+  "bağlantısı yavaş; beklenmeyecek" bildirilir. Kontrol edebilenler "Beklemeden devam et" ile beklemeyi bitirebilir.
 - Tarayıcı otomatik oynatmayı engellerse oynatıcının üstünde "Oynatmayı başlatmak için tıkla" çıkar.
 
 ## Altyazı
