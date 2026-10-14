@@ -9,6 +9,12 @@ builder.Services.AddOptions<SecurityOptions>()
     .Bind(builder.Configuration.GetSection(SecurityOptions.Section))
     .ValidateDataAnnotations()
     .ValidateOnStart();
+builder.Services.AddOptions<VoiceOptions>()
+    .Bind(builder.Configuration.GetSection(VoiceOptions.Section))
+    // Hiç ICE sunucusu ayarlanmadıysa varsayılan tek STUN.
+    .PostConfigure(o => { if (o.IceServers.Length == 0) o.IceServers = [VoiceOptions.DefaultStun]; })
+    .Validate(o => o.IsValid(), "Voice:IceServers geçersiz: her sunucuda stun:/stuns:/turn:/turns: ile başlayan en az bir adres olmalı")
+    .ValidateOnStart();
 builder.Services.AddHttpRateLimits();
 builder.Services.AddSingleton<ILobbyStore, InMemoryLobbyStore>();
 builder.Services.AddSingleton(TimeProvider.System);
