@@ -13,4 +13,7 @@ public static class LobbyEvents
 
     public static Task SendParticipants(IHubClients<IClientProxy> clients, Lobby lobby) =>
         clients.Group(lobby.Code).SendAsync("ParticipantsChanged", ParticipantsOf(lobby));
+
+    public static Task SendVoiceMembers(IHubClients<IClientProxy> clients, Lobby lobby) =>
+        clients.Group(lobby.Code).SendAsync("VoiceMembersChanged", lobby.VoiceMembers());
 }

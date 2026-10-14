@@ -12,10 +12,13 @@ public enum StartWaitingOutcome { Unchanged, Started, Ignored, IgnoredFirstTime 
 
 public record StartWaitingResult(StartWaitingOutcome Outcome, PlaybackState Playback);
 
+public enum VoiceJoinOutcome { Joined, AlreadyMember, Full, NotInLobby }
+
 public class Lobby
 {
     public const int MaxParticipants = 20;
     public const int MaxChatHistory = 50;
+    public const int MaxVoiceMembers = 6;
 
     // Takılan biri için tek seferde en fazla bu kadar beklenir.
     public static readonly TimeSpan MaxWait = TimeSpan.FromSeconds(10);
@@ -58,6 +61,15 @@ public class Lobby
     // Yok sayılma bildirildi: clientId -> bildirimin geçerli olduğu pencerenin sonu.
     private readonly Dictionary<string, DateTimeOffset> _ignoredUntil = new();
 
+    // Sesli sohbet üyeleri, katılma sırasıyla: bağlantı kimliği ve sessizde mi. Yalnızca Gate altında değişir.
+    private readonly List<VoiceMember> _voice = [];
+
+    private sealed class VoiceMember(string connectionId)
+    {
+        public string ConnectionId { get; } = connectionId;
+        public bool Muted { get; set; }
+    }
+
     public JoinOutcome TryJoin(Participant participant)
     {
         lock (Gate)
@@ -80,6 +92,8 @@ public class Lobby
         lock (Gate)
         {
             Participants.TryRemove(connectionId, out var leaving);
+            // Lobiden ayrılan sesli sohbetten de çıkar.
+            _voice.RemoveAll(v => v.ConnectionId == connectionId);
 
             // Host'un son bağlantısı gittiyse hostluğu hemen devretmiyoruz: sayfa yenileme olabilir.
             // LobbyTickService kısa bir bekleme süresinden sonra devreder.
@@ -212,6 +226,61 @@ public class Lobby
             : Playback with { WaitingFor = remaining };
         return Playback;
     }
+
+    // Sesli sohbete katılır. Zaten üyeyse durum değişmez (AlreadyMember).
+    public VoiceJoinOutcome TryJoinVoice(string connectionId)
+    {
+        lock (Gate)
+        {
+            if (!Participants.ContainsKey(connectionId))
+                return VoiceJoinOutcome.NotInLobby;
+            if (FindVoice(connectionId) is not null)
+                return VoiceJoinOutcome.AlreadyMember;
+            if (_voice.Count >= MaxVoiceMembers)
+                return VoiceJoinOutcome.Full;
+
+            _voice.Add(new VoiceMember(connectionId));
+            return VoiceJoinOutcome.Joined;
+        }
+    }
+
+    // Üyeyse çıkarır ve true döner; üye değilse false.
+    public bool LeaveVoice(string connectionId)
+    {
+        lock (Gate)
+            return _voice.RemoveAll(v => v.ConnectionId == connectionId) > 0;
+    }
+
+    // Üyeyse sessiz durumunu ayarlar ve true döner; üye değilse false.
+    public bool SetVoiceMuted(string connectionId, bool muted)
+    {
+        lock (Gate)
+        {
+            if (FindVoice(connectionId) is not { } member)
+                return false;
+            member.Muted = muted;
+            return true;
+        }
+    }
+
+    public bool IsVoiceMember(string connectionId)
+    {
+        lock (Gate)
+            return FindVoice(connectionId) is not null;
+    }
+
+    // Salt okunur görünüm, katılma sırasıyla. Takma ad katılımcı kaydından alınır.
+    public VoiceMemberView[] VoiceMembers()
+    {
+        lock (Gate)
+            return _voice
+                .Select(v => Participants.TryGetValue(v.ConnectionId, out var p) ? new VoiceMemberView(v.ConnectionId, p.Nickname, v.Muted) : null)
+                .OfType<VoiceMemberView>()
+                .ToArray();
+    }
+
+    // Gate altında çağrılır.
+    private VoiceMember? FindVoice(string connectionId) => _voice.Find(v => v.ConnectionId == connectionId);
 
     public void AddChat(ChatMessage message)
     {

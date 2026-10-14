@@ -10,8 +10,10 @@ public class HubRateLimitFilter(ConnectionCounter counter, IOptions<SecurityOpti
     private const string ChatKey = "rl:chat";
     private const string PlaybackKey = "rl:playback";
     private const string OtherKey = "rl:other";
+    private const string VoiceKey = "rl:voice";
 
     private static readonly HashSet<string> PlaybackMethods = ["SetMedia", "Play", "Pause", "Seek", "SetControlMode", "SetSubtitle", "ReportBuffering", "SkipWaiting"];
+    private static readonly HashSet<string> VoiceMethods = ["JoinVoice", "LeaveVoice", "SetVoiceMuted", "VoiceSignal"];
 
     public async Task OnConnectedAsync(HubLifetimeContext context, Func<HubLifetimeContext, Task> next)
     {
@@ -29,6 +31,7 @@ public class HubRateLimitFilter(ConnectionCounter counter, IOptions<SecurityOpti
             items[ChatKey] = Bucket(o.ChatBurst, o.ChatPerSecond);
             items[PlaybackKey] = Bucket(o.PlaybackBurst, o.PlaybackPerSecond);
             items[OtherKey] = Bucket(o.OtherBurst, o.OtherPerSecond);
+            items[VoiceKey] = Bucket(o.VoiceBurst, o.VoicePerSecond);
 
             await next(context);
         }
@@ -45,6 +48,7 @@ public class HubRateLimitFilter(ConnectionCounter counter, IOptions<SecurityOpti
         var name = invocationContext.HubMethodName;
         var key = name == "SendChat" ? ChatKey
             : PlaybackMethods.Contains(name) ? PlaybackKey
+            : VoiceMethods.Contains(name) ? VoiceKey
             : OtherKey;
 
         // Bucket yoksa kapalı başarısız ol: sınırsız çağrıya izin verme.
@@ -82,7 +86,7 @@ public class HubRateLimitFilter(ConnectionCounter counter, IOptions<SecurityOpti
             counter.Release(ipValue);
         }
 
-        foreach (var key in (string[])[ChatKey, PlaybackKey, OtherKey])
+        foreach (var key in (string[])[ChatKey, PlaybackKey, OtherKey, VoiceKey])
             items.Remove(key);
     }
 }
