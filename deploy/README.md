@@ -199,6 +199,22 @@ terraform -chdir=infra apply -replace=aws_instance.api
 
 EIP ve origin secret aynı kalır; bellekteki lobiler kaybolur, ardından backend'i yeniden deploy edin.
 
+## Sesli sohbet (ICE sunucuları)
+
+Sesli sohbet tarayıcılar arasında doğrudan (WebRTC) çalışır; sunucudan ses geçmez, ek bir port ya da servis gerekmez. Tarayıcılara verilecek ICE sunucuları `Voice:IceServers` ayarından gelir. Ayar verilmezse varsayılan tek STUN (`stun:stun.l.google.com:19302`) kullanılır. Sunucuda `/etc/watchparty/watchparty.env` içinde ortam değişkeniyle ayarlanır:
+
+```
+Voice__IceServers__0__Urls__0=stun:stun.l.google.com:19302
+# TURN, varsayılan STUN'un yanına eklenecekse indeks 1 kullanılır (indeks 0 varsayılanı değiştirir):
+Voice__IceServers__1__Urls__0=turn:turn.example.com:3478
+Voice__IceServers__1__Username=kullanici
+Voice__IceServers__1__Credential=sifre
+```
+
+Değişiklik için servisi yeniden başlatın (`sudo systemctl restart watchparty`). Başlangıçta doğrulanır: her sunucuda en az bir URL olmalı ve `stun:`, `stuns:`, `turn:` ya da `turns:` ile başlamalı; geçersizse servis açılmaz.
+
+TURN sunucusunun kendisini kurmak (coturn ya da bir hizmet, güvenlik grubunda UDP/TCP 3478 ve ilişkili port aralığı) ayrı bir iştir ve yapılmadı (bkz. `docs/BACKLOG.md`). Şimdilik yalnızca STUN var; bazı ağlarda (simetrik NAT, kurumsal güvenlik duvarı) kişi "Bağlanamadı" görür.
+
 ## 9. Kaldırma
 
 ```powershell
