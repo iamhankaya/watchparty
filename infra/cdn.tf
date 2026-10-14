@@ -3,8 +3,9 @@ locals {
   api_origin_id    = "api"
   videos_origin_id = "videos"
 
+  # connect-src: tarayıcıdan yüklemede presigned PUT video bucket'ının bölgesel adresine gider.
   # Spec ile birebir; değiştirirken frontend'in yüklediği kaynakları (YouTube, Google Fonts) kontrol edin.
-  content_security_policy = "default-src 'self'; script-src 'self' https://www.youtube.com; frame-src https://www.youtube.com; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; media-src https:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+  content_security_policy = "default-src 'self'; script-src 'self' https://www.youtube.com; frame-src https://www.youtube.com; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; media-src https:; connect-src 'self' https://${aws_s3_bucket.videos.bucket}.s3.${var.region}.amazonaws.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
 }
 
 resource "aws_cloudfront_origin_access_control" "site" {
