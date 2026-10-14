@@ -1,6 +1,9 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
+import { USE_MOCK } from "../lib/api";
 import { parseMediaInput } from "../lib/media";
 import { MAX_MEDIA_ID, type MediaType, type PlaybackState } from "../lib/types";
+import { Icon } from "./Icon";
+import { UploadDialog } from "./UploadDialog";
 
 interface Props {
   disabled: boolean;
@@ -38,6 +41,8 @@ export function MediaPicker({ disabled, playback, onSetMedia, onSetSubtitle }: P
   const [subtitle, setSubtitle] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const uploadButton = useRef<HTMLButtonElement>(null);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -80,44 +85,70 @@ export function MediaPicker({ disabled, playback, onSetMedia, onSetSubtitle }: P
   };
 
   return (
-    <form className="media-picker" onSubmit={handleSubmit}>
-      <input
-        value={value}
-        onChange={change(setValue)}
-        placeholder="YouTube linki veya MP4 adresi (https://...)"
-        disabled={disabled}
-        aria-invalid={problem !== null}
-      />
-      <button className="primary" disabled={disabled || busy || (!value.trim() && !subtitle.trim())}>
-        Herkese aç
-      </button>
-      <div className="subtitle-row">
+    <>
+      <form className="media-picker" onSubmit={handleSubmit}>
         <input
-          value={subtitle}
-          onChange={change(setSubtitle)}
-          placeholder="Altyazı linki (.vtt / .srt, isteğe bağlı)"
+          value={value}
+          onChange={change(setValue)}
+          placeholder="YouTube linki veya MP4 adresi (https://...)"
           disabled={disabled}
           aria-invalid={problem !== null}
         />
-        {playback?.subtitleUrl && (
-          <button
-            type="button"
-            disabled={disabled || busy}
-            onClick={() => {
-              setProblem(null);
-              onSetSubtitle(null).catch(() => {});
-            }}
-          >
-            Altyazıyı kaldır
-          </button>
+        <button className="primary" disabled={disabled || busy || (!value.trim() && !subtitle.trim())}>
+          Herkese aç
+        </button>
+        <div className="subtitle-row">
+          <input
+            value={subtitle}
+            onChange={change(setSubtitle)}
+            placeholder="Altyazı linki (.vtt / .srt, isteğe bağlı)"
+            disabled={disabled}
+            aria-invalid={problem !== null}
+          />
+          {playback?.subtitleUrl && (
+            <button
+              type="button"
+              disabled={disabled || busy}
+              onClick={() => {
+                setProblem(null);
+                onSetSubtitle(null).catch(() => {});
+              }}
+            >
+              Altyazıyı kaldır
+            </button>
+          )}
+        </div>
+        {isCrossOrigin(subtitle.trim()) && (
+          <p className="muted small">
+            Bu adres başka bir sitede; altyazı yalnızca bu sitedeki dosyalardan açılabiliyor.
+          </p>
         )}
-      </div>
-      {isCrossOrigin(subtitle.trim()) && (
-        <p className="muted small">
-          Bu adres başka bir sitede; altyazı yalnızca bu sitedeki dosyalardan açılabiliyor.
-        </p>
+        {problem && <p className="error small">{problem}</p>}
+        {/* Yükleme gerçek sunucu ve S3 ister; mock modunda düğme yok. */}
+        {!USE_MOCK && (
+          <div className="upload-row">
+            <button type="button" ref={uploadButton} className="upload-open" onClick={() => setUploadOpen(true)}>
+              <Icon name="upload" />
+              Bilgisayardan yükle
+            </button>
+          </div>
+        )}
+      </form>
+      {/* Pencere formun dışında: iç içe form olmasın, gönderimi bu forma kabarmasın. */}
+      {uploadOpen && (
+        <UploadDialog
+          canControl={!disabled}
+          onClose={() => {
+            setUploadOpen(false);
+            uploadButton.current?.focus();
+          }}
+          onOpenInLobby={async (videoUrl, subtitleUrl) => {
+            // Önce video (sunucu yeni videoda altyazıyı sıfırlar), sonra varsa altyazı.
+            await onSetMedia("file", videoUrl);
+            if (subtitleUrl) await onSetSubtitle(subtitleUrl);
+          }}
+        />
       )}
-      {problem && <p className="error small">{problem}</p>}
-    </form>
+    </>
   );
 }
