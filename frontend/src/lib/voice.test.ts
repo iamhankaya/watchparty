@@ -31,7 +31,11 @@ class FakePeer {
     this.signalingState = type === "offer" ? "have-local-offer" : "stable";
   });
   setRemoteDescription = vi.fn(async (d: RTCSessionDescriptionInit) => {
-    // Gerçek tarayıcıdaki gibi: have-local-offer iken gelen offer örtük rollback yapar.
+    // Gerçek tarayıcıdaki gibi: have-local-offer iken gelen offer örtük rollback yapar;
+    // beklenen offer yokken gelen answer hata verir.
+    if (d.type === "answer" && this.signalingState !== "have-local-offer") {
+      throw new Error(`answer için yanlış durum: ${this.signalingState}`);
+    }
     this.remoteDescription = d;
     this.signalingState = d.type === "offer" ? "have-remote-offer" : "stable";
   });
@@ -205,6 +209,45 @@ describe("VoiceSession sinyal", () => {
     expect(sentOf("answer")).toHaveLength(1);
   });
 
+  test("start'tan önce gelen offer tamponlanır, start'ta işlenip answer gönderilir", async () => {
+    peers = [];
+    const s = new VoiceSession(
+      {
+        createPeer: (config) => {
+          const p = new FakePeer(config);
+          peers.push(p);
+          return p as unknown as RTCPeerConnection;
+        },
+      },
+      cb as unknown as VoiceCallbacks,
+    );
+    cb.sendSignal.mockClear();
+    await s.handleSignal("c", "offer", JSON.stringify({ type: "offer", sdp: "uzak" }));
+    expect(peers).toHaveLength(0);
+    s.setMembers([member("b"), member("c")]);
+    s.start(fakeStream(), ICE, "b");
+    await flush();
+    expect(peers).toHaveLength(1);
+    expect(peers[0].setRemoteDescription).toHaveBeenCalledWith({ type: "offer", sdp: "uzak" });
+    expect(sentOf("answer")).toHaveLength(1);
+  });
+
+  test("bilinmeyen kişiden offer, ardından onu içeren üye listesi → tek bağlantı, kapanmaz", async () => {
+    setup("b");
+    await session.handleSignal("c", "offer", JSON.stringify({ type: "offer", sdp: "uzak" }));
+    session.setMembers([member("b"), member("c")]);
+    expect(peers).toHaveLength(1);
+    expect(peers[0].close).not.toHaveBeenCalled();
+    expect(cb.onPeerClosed).not.toHaveBeenCalled();
+  });
+
+  test("bilinmeyen kişiden answer/aday yok sayılır, bağlantı açılmaz", async () => {
+    setup("b");
+    await session.handleSignal("c", "answer", JSON.stringify({ type: "answer", sdp: "x" }));
+    await session.handleSignal("c", "candidate", JSON.stringify({ candidate: "x" }));
+    expect(peers).toHaveLength(0);
+  });
+
   test("kendinden ya da bozuk payload ile gelen sinyal yok sayılır", async () => {
     setup("b");
     session.setMembers([member("c")]);
@@ -238,10 +281,71 @@ describe("VoiceSession perfect negotiation", () => {
     expect(sentOf("answer")).toHaveLength(0);
     expect(peers[0].signalingState).toBe("have-local-offer");
 
-    peers[0].addIceCandidate.mockRejectedValueOnce(new Error("uzak tanım yok"));
-    await expect(
-      session.handleSignal("c", "candidate", JSON.stringify({ candidate: "x", sdpMid: "0" })),
-    ).resolves.toBeUndefined();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      peers[0].addIceCandidate.mockRejectedValueOnce(new Error("uzak tanım yok"));
+      await session.handleSignal("c", "candidate", JSON.stringify({ candidate: "x", sdpMid: "0" }));
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("offer yok sayılmamışken aday hatası uyarı olarak loglanır", async () => {
+    setup("b");
+    session.setMembers([member("c")]);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      peers[0].addIceCandidate.mockRejectedValueOnce(new Error("bozuk aday"));
+      await session.handleSignal("c", "candidate", JSON.stringify({ candidate: "x", sdpMid: "0" }));
+      expect(warn).toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("iki oturum aynı anda teklif yapınca (glare) kilitlenmeden stable'a ulaşır", async () => {
+    const make = (selfId: string, list: FakePeer[], other: () => VoiceSession) =>
+      new VoiceSession(
+        {
+          createPeer: (config) => {
+            const p = new FakePeer(config);
+            list.push(p);
+            return p as unknown as RTCPeerConnection;
+          },
+        },
+        {
+          sendSignal: (_to, kind, payload) => {
+            sent.push(`${selfId}:${kind}`);
+            setTimeout(() => void other().handleSignal(selfId, kind, payload), 0);
+          },
+          onRemoteStream: () => {},
+          onPeerState: () => {},
+          onPeerClosed: () => {},
+        },
+      );
+    const sent: string[] = [];
+    const peersA: FakePeer[] = [];
+    const peersB: FakePeer[] = [];
+    const a: VoiceSession = make("a", peersA, () => b);
+    const b: VoiceSession = make("b", peersB, () => a);
+    a.start(fakeStream(), ICE, "a");
+    b.start(fakeStream(), ICE, "b");
+    a.setMembers([member("a"), member("b")]);
+    b.setMembers([member("a"), member("b")]);
+    // İki taraf da aynı anda müzakere ister.
+    peersA[0].onnegotiationneeded?.();
+    peersB[0].onnegotiationneeded?.();
+    for (let i = 0; i < 10; i++) await flush();
+
+    expect(peersA[0].signalingState).toBe("stable");
+    expect(peersB[0].signalingState).toBe("stable");
+    // Polite "a" rollback yapıp "b"nin teklifini yanıtlar; impolite "b" "a"nın teklifini yok sayar.
+    expect(sent).toContain("a:answer");
+    expect(sent).not.toContain("b:answer");
+    expect(peersB[0].setRemoteDescription).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "answer" }),
+    );
   });
 
   test("offer hazırlanırken (makingOffer) gelen offer da çakışma sayılır", async () => {
@@ -278,6 +382,26 @@ describe("VoiceSession bağlantı durumu", () => {
     expect(peers[0].restartIce).toHaveBeenCalledTimes(1);
     expect(cb.onPeerState).toHaveBeenCalledWith("c", "failed");
   });
+
+  test("connected olunca restartIce hakkı yenilenir", () => {
+    session.setMembers([member("c")]);
+    peers[0].setState("failed");
+    peers[0].setState("connected");
+    peers[0].setState("failed");
+    expect(peers[0].restartIce).toHaveBeenCalledTimes(2);
+    expect(cb.onPeerState).not.toHaveBeenCalledWith("c", "failed");
+    peers[0].setState("failed");
+    expect(peers[0].restartIce).toHaveBeenCalledTimes(2);
+    expect(cb.onPeerState).toHaveBeenCalledWith("c", "failed");
+  });
+
+  test("disconnected → connecting bildirilir", () => {
+    session.setMembers([member("c")]);
+    peers[0].setState("connected");
+    cb.onPeerState.mockClear();
+    peers[0].setState("disconnected");
+    expect(cb.onPeerState).toHaveBeenCalledWith("c", "connecting");
+  });
 });
 
 describe("VoiceSession sessize alma ve durdurma", () => {
@@ -302,5 +426,12 @@ describe("VoiceSession sessize alma ve durdurma", () => {
     await session.handleSignal("c", "offer", JSON.stringify({ type: "offer", sdp: "x" }));
     expect(cb.sendSignal).not.toHaveBeenCalled();
     expect(peers).toHaveLength(2);
+  });
+
+  test("stop üye listesini de temizler: yeniden start eski üyelere bağlanmaz", () => {
+    session.setMembers([member("c")]);
+    session.stop();
+    session.start(stream, ICE, "b");
+    expect(peers).toHaveLength(1);
   });
 });

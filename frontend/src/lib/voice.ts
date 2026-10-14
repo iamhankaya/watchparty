@@ -15,6 +15,17 @@ export interface VoiceCallbacks {
   onPeerClosed(id: string): void;
 }
 
+interface PendingSignal {
+  fromId: string;
+  kind: VoiceSignalKind;
+  payload: string;
+  at: number; // Date.now()
+}
+
+// start()'tan önce gelen sinyaller için tampon (JoinVoice dönüşü ile start arasındaki yarış).
+const MAX_PENDING = 200;
+const PENDING_MAX_AGE_MS = 10_000; // daha eski olanlar önceki oturumdan kalmadır, oynatılmaz
+
 interface Peer {
   id: string;
   pc: RTCPeerConnection;
@@ -22,7 +33,7 @@ interface Peer {
   makingOffer: boolean;
   ignoreOffer: boolean;
   settingRemoteAnswer: boolean;
-  restarted: boolean; // restartIce bir kez denendi mi
+  restarted: boolean; // bu kopuşta restartIce denendi mi ("connected" olunca sıfırlanır)
 }
 
 /**
@@ -43,6 +54,7 @@ export class VoiceSession {
   private config: RTCConfiguration = {};
   private selfId = "";
   private muted = false;
+  private pending: PendingSignal[] = [];
 
   constructor(deps: VoiceDeps, callbacks: VoiceCallbacks) {
     this.deps = deps;
@@ -50,7 +62,7 @@ export class VoiceSession {
   }
 
   start(localStream: MediaStream, iceServers: IceServer[], selfId: string): void {
-    this.stop();
+    this.closeAll();
     this.localStream = localStream;
     this.selfId = selfId;
     this.config = {
@@ -63,6 +75,7 @@ export class VoiceSession {
     };
     this.applyMuted();
     this.sync();
+    this.replayPending();
   }
 
   /** Sunucunun bildirdiği üye listesi: yeni eşlere bağlantı açılır, çıkanlarınki kapanır. */
@@ -72,7 +85,13 @@ export class VoiceSession {
   }
 
   async handleSignal(fromId: string, kind: VoiceSignalKind, payload: string): Promise<void> {
-    if (!this.localStream || fromId === this.selfId) return;
+    if (!this.localStream) {
+      // Henüz start() çağrılmadı: düşürülürse müzakere kalıcı olarak kilitlenebilir, tamponla.
+      this.pending.push({ fromId, kind, payload, at: Date.now() });
+      if (this.pending.length > MAX_PENDING) this.pending.shift();
+      return;
+    }
+    if (fromId === this.selfId) return;
     let data: unknown;
     try {
       data = JSON.parse(payload);
@@ -81,9 +100,13 @@ export class VoiceSession {
     }
     if (typeof data !== "object" || data === null) return;
 
-    // Üye listesi sinyalin gerisinde kalmış olabilir: bilinmeyen eş için bağlantı aç.
-    // Gerçekten üye değilse bir sonraki setMembers kapatır.
-    const peer = this.peers.get(fromId) ?? this.openPeer(fromId);
+    // Üye listesi sinyalin gerisinde kalmış olabilir: bilinmeyen eşten gelen offer için bağlantı aç
+    // (gerçekten üye değilse bir sonraki setMembers kapatır). Bilinmeyenden answer/aday yok sayılır.
+    let peer = this.peers.get(fromId);
+    if (!peer) {
+      if (kind !== "offer") return;
+      peer = this.openPeer(fromId);
+    }
     const pc = peer.pc;
 
     try {
@@ -126,10 +149,30 @@ export class VoiceSession {
     this.applyMuted();
   }
 
-  /** Tüm bağlantıları kapatır (her eş için onPeerClosed). Yerel akışın izlerini durdurmaz. */
+  /**
+   * Tüm bağlantıları kapatır (her eş için onPeerClosed), üye listesini ve sinyal tamponunu
+   * temizler. Yerel akışın izlerini durdurmaz.
+   */
   stop(): void {
-    for (const id of [...this.peers.keys()]) this.closePeer(id);
+    this.closeAll();
+    this.members = [];
+    this.pending = [];
     this.localStream = null;
+  }
+
+  private closeAll(): void {
+    for (const id of [...this.peers.keys()]) this.closePeer(id);
+  }
+
+  /** Tampondaki sinyalleri sırayla işler; çok eski olanları atar. */
+  private replayPending(): void {
+    const cutoff = Date.now() - PENDING_MAX_AGE_MS;
+    const queue = this.pending.filter((p) => p.at >= cutoff);
+    this.pending = [];
+    if (queue.length === 0) return;
+    void (async () => {
+      for (const p of queue) await this.handleSignal(p.fromId, p.kind, p.payload);
+    })();
   }
 
   private applyMuted(): void {
@@ -182,9 +225,11 @@ export class VoiceSession {
       if (!alive()) return;
       switch (pc.connectionState) {
         case "connecting":
+        case "disconnected": // geçici kopma; ICE kendiliğinden toparlanabilir
           this.cb.onPeerState(id, "connecting");
           break;
         case "connected":
+          peer.restarted = false; // sonraki kopuşta yeniden bir kez denensin
           this.cb.onPeerState(id, "connected");
           break;
         case "failed":

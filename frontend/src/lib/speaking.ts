@@ -30,6 +30,8 @@ interface Watched {
  * Akışların konuşma durumunu yerelde hesaplar: tek AudioContext, akış başına AnalyserNode,
  * 100 ms'de bir RMS örneklemesi. Değişince onChange dinleyicileri çağrılır.
  * AudioContext yoksa (test/eski tarayıcı) sessizce hiçbir şey yapmaz.
+ * İlk watch() kullanıcı etkileşiminden (sesli sohbete katıl tıklaması) çağrılmalı; aksi halde
+ * tarayıcı AudioContext'i askıda başlatır (watch her çağrıda resume dener).
  * Not: Chrome'da uzak WebRTC akışı ayrıca bir <audio> öğesine bağlı değilse analyser sessizlik görür.
  */
 export class SpeakingDetector {
@@ -42,6 +44,7 @@ export class SpeakingDetector {
     this.unwatch(id);
     const ctx = this.context();
     if (!ctx) return;
+    if (ctx.state === "suspended") void ctx.resume().catch(() => {});
     try {
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
@@ -66,6 +69,7 @@ export class SpeakingDetector {
     if (!w) return;
     this.watched.delete(id);
     w.source.disconnect();
+    w.analyser.disconnect();
     if (w.speaking) this.emit(id, false);
     if (this.watched.size === 0) this.clearTimer();
   }
@@ -88,8 +92,6 @@ export class SpeakingDetector {
     if (this.ctx) return this.ctx;
     if (typeof AudioContext === "undefined") return null;
     this.ctx = new AudioContext();
-    // Kullanıcı etkileşimi öncesi askıda başlayabilir.
-    if (this.ctx.state === "suspended") void this.ctx.resume().catch(() => {});
     return this.ctx;
   }
 
