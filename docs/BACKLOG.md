@@ -16,6 +16,9 @@ Yapılacaklar, önem sırasıyla değil gruplar halinde. Bir madde ele alınınc
 
 ## Uygulama
 
+- **Yükleme anahtarı işlemleri sunucuyu yeniden başlatıyor.** `upload-keys.ps1`'in her `-Init`/`-Add`/`-Remove` çağrısı servisi yeniden başlatıp açık lobileri düşürüyor (2026-10-15 akşamı üst üste üç yeniden başlatma lobileri düşürdü). Anahtarları ayrı bir dosyadan okuyup değişince yeniden yüklemek (`IOptionsMonitor` + dosya izleme) ya da en azından birden çok işlemi tek yeniden başlatmada toplamak gerekir.
+- **Script çıktısında Türkçe karakter bozulması.** `upload-keys.ps1` sunucudan dönen "Sağlık kontrolü başarılı" mesajını "SaÄŸlÄ±k" diye gösteriyor (SSM çıktısı UTF-8, konsol kod sayfası farklı).
+
 - Yükleme sınırları (6 GB / 2 MB) anahtar sahipleri için tavsiye niteliğinde: parça URL'leri ve altyazı putUrl Content-Length imzalamıyor; gerekirse imzalı Content-Length ve tamamlama sonrası HeadObject.
 - **Oynatma durumu sürüm numarası.** Hub yayınları kilit dışında gönderildiği için iki değişiklik istemcilere ters sırada ulaşabilir (ör. bekleme başladı/bitti); istemci en fazla 10 sn'lik yeniden yayına kadar eski durumda kalır. `PlaybackState`'e artan bir `Version` eklenip istemcinin eskileri atması çözer.
 - **Bekleme küçükleri.** Geç fark edilen kopmadan sonra kişinin eski bağlantı kimliği 10 sn listede kalabiliyor ("hayalet" bekleme); `Lobby`'deki tekrar sayacı sözlükleri lobi ömrü boyunca temizlenmiyor; YouTube reklamları ya da otomatik oynatma engeli BUFFERING görünürse grup bekleyebilir (canlıda gözlenmedi).
