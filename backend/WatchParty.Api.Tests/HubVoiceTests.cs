@@ -47,6 +47,8 @@ public class HubVoiceTests
         var client = await ConnectAsync(factory);
         var join = await client.Connection.InvokeAsync<JsonElement>("JoinLobby", code, clientId, clientId);
         Assert.Equal(client.SelfId, join.GetProperty("selfId").GetString());
+        // JoinLobby, katılana o anki sesli üye listesini gönderir; testler sonraki yayınları beklediği için tüketilir.
+        await client.NextMembers();
         return client;
     }
 
@@ -81,6 +83,28 @@ public class HubVoiceTests
         var second = await b.JoinVoice();
         Assert.Equal([a.SelfId, b.SelfId], Ids(second.GetProperty("members")));
         Assert.Equal([a.SelfId, b.SelfId], Ids(await a.NextMembers()));
+    }
+
+    [Fact]
+    public async Task Late_joiner_receives_current_voice_members()
+    {
+        await using var factory = new WatchPartyFactory();
+        var code = await factory.CreateLobbyAsync("host");
+        await using var a = await JoinAsync(factory, code, "Ayse");
+        await using var b = await JoinAsync(factory, code, "Mehmet");
+        await a.JoinVoice();
+        await b.JoinVoice();
+        await b.Invoke("SetVoiceMuted", true);
+
+        // Sesli sohbet sürerken lobiye katılan, bir sonraki değişikliği beklemeden listeyi alır.
+        await using var c = await ConnectAsync(factory);
+        await c.Connection.InvokeAsync<JsonElement>("JoinLobby", code, "Can", "Can");
+
+        var members = await c.NextMembers();
+        Assert.Equal([a.SelfId, b.SelfId], Ids(members));
+        Assert.Equal([false, true], members.EnumerateArray().Select(m => m.GetProperty("muted").GetBoolean()));
+        await Settle();
+        Assert.False(c.HasPendingMembers);
     }
 
     [Fact]

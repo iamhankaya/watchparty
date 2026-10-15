@@ -40,6 +40,8 @@ public class LobbyHub(ILobbyStore store, IOptions<VoiceOptions> voiceOptions) : 
         await Clients.Caller.SendAsync("PlaybackUpdated", lobby.Playback);
         await Clients.Caller.SendAsync("ControlModeChanged", lobby.HostOnlyControl);
         await Clients.Caller.SendAsync("ChatHistory", lobby.ChatHistory());
+        // Sesli sohbet sürüyorsa (veya yeniden bağlanınca) üye listesi bir sonraki değişikliği beklemesin.
+        await Clients.Caller.SendAsync("VoiceMembersChanged", lobby.VoiceMembers());
 
         return new JoinResult(Context.ConnectionId, IsHost(lobby));
     }

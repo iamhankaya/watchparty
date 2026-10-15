@@ -301,6 +301,10 @@ export class MockLobbyConnection implements LobbyConnection {
     this.events.chatHistory(lobby.chat);
     const result = { selfId: this.tabId, isHost: clientId === lobby.hostClientId };
     this.events.joined(result);
+    // Hub gibi: katılana o anki sesli üye listesini gönder (bir sonraki değişikliği beklemesin).
+    const voice = voiceMembers(code);
+    this.voiceIds = new Set(voice.map((m) => m.id));
+    this.events.voiceMembersChanged(voice);
     return result;
   }
 

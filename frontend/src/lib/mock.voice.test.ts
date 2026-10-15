@@ -36,7 +36,9 @@ async function client(code: string, nick: string) {
   const conn = new MockLobbyConnection(events(log));
   conns.push(conn);
   const { selfId } = await conn.join(code, nick, `c-${nick}`);
-  return { conn, log, selfId };
+  // join() o anki sesli üye listesini gönderir; testler sonraki yayınlara baktığı için ayrı tutulur.
+  const initialMembers = log.members.splice(0);
+  return { conn, log, selfId, initialMembers };
 }
 const tick = () => new Promise((r) => setTimeout(r, 20));
 
@@ -83,6 +85,29 @@ describe("MockLobbyConnection sesli sohbet", () => {
     await tick();
     expect(a.log.members).toHaveLength(1);
     expect(b.log.members).toHaveLength(1);
+  });
+
+  it("lobiye sonradan katılan, o anki sesli üye listesini hemen alır", async () => {
+    const code = await mockApi.createLobby("c-A", false);
+    const a = await client(code, "A");
+    expect(a.initialMembers).toEqual([[]]);
+    const b = await client(code, "B");
+    await a.conn.joinVoice();
+    await b.conn.joinVoice();
+    await b.conn.setVoiceMuted(true);
+    const c = await client(code, "C");
+    expect(c.initialMembers).toEqual([
+      [
+        { id: a.selfId, nickname: "A", muted: false },
+        { id: b.selfId, nickname: "B", muted: true },
+      ],
+    ]);
+    // C'nin sinyal üyelik kontrolü de bu listeyi bilir: C katılınca A'ya sinyal gönderebilir.
+    await c.conn.joinVoice();
+    await tick();
+    await c.conn.voiceSignal(a.selfId, "offer", '{"sdp":"c"}');
+    await tick();
+    expect(a.log.signals).toEqual([[c.selfId, "offer", '{"sdp":"c"}']]);
   });
 
   it("7. kişiye 'Sesli sohbet dolu'", async () => {
