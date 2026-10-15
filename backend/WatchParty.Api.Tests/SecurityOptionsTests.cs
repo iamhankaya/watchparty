@@ -18,6 +18,7 @@ public class SecurityOptionsTests
     [InlineData("Security:ChatBurst")]
     [InlineData("Security:OtherPerSecond")]
     [InlineData("Security:CreateLobbyPerMinute")]
+    [InlineData("Security:UploadPerMinute")]
     [InlineData("Security:MaxConnectionsPerIp")]
     [InlineData("Security:VoiceBurst")]
     [InlineData("Security:VoicePerSecond")]

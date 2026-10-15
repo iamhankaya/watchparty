@@ -103,6 +103,12 @@ const PATHS = {
       <path d="M12 10v4M12 17v.01" />
     </>
   ),
+  upload: (
+    <>
+      <path d="M12 15.5V4M7.5 8.5L12 4l4.5 4.5" />
+      <path d="M4.5 14.5v4a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-4" />
+    </>
+  ),
 };
 
 export type IconName = keyof typeof PATHS;
