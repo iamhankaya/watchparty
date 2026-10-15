@@ -137,7 +137,31 @@ if [ "$1" = restart ] && [ ! -e "%s/failed-once" ]; then touch "%s/failed-once";
   [ "$(grep -c 'restart watchparty' "$LOG")" -eq 2 ]; check "geri alma restart'ı denendi" $?
 }
 
+# İlk denemede stderr'e yazıp başarısız olan, sonra başarılı olan sahte sağlık komutu
+# (Kestrel açılmadan önceki "Failed to connect" durumu).
+test_failing_then_healthy_keeps_stderr_clean() {
+  printf '#!/usr/bin/env bash
+if [ ! -e "%s/health-once" ]; then touch "%s/health-once"; echo "Failed to connect" >&2; exit 7; fi
+' "$T" "$T" > "$T/health"
+  chmod +x "$T/health"
+  WP_HEALTH_TIMEOUT=5 WP_HEALTH="$T/health" bash "$SCRIPT" deploy s3://b/r1.zip r1 >/dev/null 2>"$T/err"; rc=$?
+  check "çıkış 0" $rc
+  [ -e "$T/health-once" ]; check "başarısız deneme oldu" $?
+  [ ! -s "$T/err" ]; check "stderr boş" $?
+}
+
+test_failed_health_logs_last_error() {
+  printf '#!/usr/bin/env bash\necho "Failed to connect" >&2\nexit 7\n' > "$T/health"
+  chmod +x "$T/health"
+  WP_HEALTH="$T/health" bash "$SCRIPT" deploy s3://b/r1.zip r1 >"$T/out" 2>&1; rc=$?
+  [ "$rc" -eq 1 ]; check "çıkış 1" $?
+  grep -q "Failed to connect" "$T/out"; check "son denemenin hatası loglandı" $?
+  grep -q "HATA: sağlık kontrolü 1 sn içinde başarısız oldu." "$T/out"; check "HATA satırı korundu" $?
+}
+
 run test_deploy_success_switches_current
+run test_failing_then_healthy_keeps_stderr_clean
+run test_failed_health_logs_last_error
 run test_failed_health_rolls_back
 run test_first_deploy_failure_leaves_no_current
 run test_keeps_last_five_releases

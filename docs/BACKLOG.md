@@ -12,7 +12,6 @@ Yapılacaklar, önem sırasıyla değil gruplar halinde. Bir madde ele alınınc
 - **Kök dosyaların MIME tipi.** `deploy-frontend.ps1` js/css/html'i açık tiple yüklüyor; favicon gibi diğer kök dosyalar hâlâ Windows kayıt defterinden tahmin edilen tiple gidiyor.
 - **Terraform kilit dosyası** yalnızca Windows hash'leri içeriyor; başka işletim sisteminde kullanılacaksa `terraform providers lock -platform=linux_amd64 -platform=darwin_arm64`.
 - **Smoke testinde zaman aşımları.** `backend/e2e/smoke.mjs` fetch ve hub bağlantılarında süre sınırı yok; yanıt vermeyen bir uçta uzun süre bekleyebilir.
-- **İlk sağlık denemesindeki gürültü.** `remote-deploy.sh` Kestrel açılmadan yaptığı ilk `curl` denemesinin hatasını stderr'e yazıyor ("Failed to connect"); deploy başarılı olsa da çıktıda hata gibi görünüyor.
 
 ## Uygulama
 
