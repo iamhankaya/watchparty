@@ -125,6 +125,11 @@ Ortak seçenekler: `-Profile <ad>`, `-Force` (onay sorusunu atlar).
 
 - `-Add` anahtarı **ekrana yazmaz**: panoya kopyalar ve yalnızca "Anahtar panoya kopyalandı" der. Kişiye özel bir kanaldan (birebir mesaj) iletin; başka bir şey kopyalamadan önce gönderin, kaybolursa `-Remove` + `-Add` ile yenisini üretin. Özet SSM ile sunucudaki ortam dosyasına yazılır.
 - **Uyarı: her anahtar işlemi (`-Init`, `-Add`, `-Remove`) servisi yeniden başlatır ve açık lobileri düşürür.** Script önce uyarır ve onay ister; insanlar izlerken çalıştırmayın.
+- Anahtarı kişiye ilettikten sonra panoyu ve Windows pano geçmişini temizleyin (Win+V → "Tümünü temizle"; ya da `Set-Clipboard -Value " "`).
+- `-List` yeniden başlatmaz ve onay sormaz. `-Init` ayarlar zaten günceldeyse "zaten güncel" der ve yeniden başlatmaz.
+- Yanlış anahtar sınırına takılan IP, doğru anahtarı girse bile 10 dakikalık pencere bitene kadar 429 alır.
+- Güvenlik ağı: yazımdan sonra sağlık kontrolü başarısız olursa script önceki ortam dosyasını (`.bak`) geri yükler ve servisi yeniden başlatır.
+- **EC2 instance yenilenirse** (`-replace=aws_instance.api` vb.) ortam dosyası `user_data`'dan sıfırdan oluşur ve `Upload__` satırları kaybolur: yükleme "Yükleme kapalı" (403) döner. `-Init` ve ardından anahtarları yeniden ekleyin (eski anahtarlar geri getirilemez; yenilerini verin).
 - Kişi anahtarı tarayıcısında "Bu tarayıcıda hatırla" ile saklayabilir (`localStorage` `wp:uploadKey`).
 - Sızan anahtar: `-Remove <ad>`, ardından gerekirse yeni `-Add`.
 - CORS (yalnızca CloudFront origin'inden `PUT`, `ETag` açık) ve CSP `connect-src` (`https://<video_bucket>.s3.eu-north-1.amazonaws.com`) Terraform'dadır; yükleme tarayıcıda CORS/CSP hatası verirse önce `apply` yapıldığından emin olun.
