@@ -43,6 +43,7 @@ export function Participants({ participants, selfId, voice }: Props) {
           const speaking = !!member && voice.joined && !muted && voice.speaking.has(p.id);
           const failed = !!member && voice.joined && !self && voice.peerStates[p.id] === "failed";
           const volume = voice.volumes[p.id] ?? 100;
+          const voiceLabel = failed ? "Bağlanamadı" : muted ? "Mikrofonu kapalı" : speaking ? "Konuşuyor" : "Sesli sohbette";
           return (
             <li key={p.id} className={speaking ? "is-speaking" : undefined}>
               <span className={`avatar tone-${avatarTone(p.nickname)}`}>{p.nickname.slice(0, 1).toUpperCase()}</span>
@@ -52,7 +53,9 @@ export function Participants({ participants, selfId, voice }: Props) {
                 {member && (
                   <span
                     className={`voice-state${speaking ? " speaking" : ""}${muted ? " muted-mic" : ""}${failed ? " failed" : ""}`}
-                    title={failed ? "Bağlanamadı" : muted ? "Mikrofonu kapalı" : speaking ? "Konuşuyor" : "Sesli sohbette"}
+                    role="img"
+                    aria-label={voiceLabel}
+                    title={voiceLabel}
                     data-voice-id={p.id}
                   >
                     <Icon name={failed ? "alert" : muted ? "micOff" : "mic"} />

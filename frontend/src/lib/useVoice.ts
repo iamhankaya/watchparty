@@ -17,6 +17,14 @@ export function micErrorMessage(e: unknown): string {
   return "Mikrofon açılamadı";
 }
 
+/**
+ * Sesli sohbetteyken gelen üye listesinde kendimiz yoksa sunucu bizi düşürmüştür
+ * (ör. bağlantı başka yoldan yenilendi); yerel oturum da kapanmalı.
+ */
+export function lostVoiceMembership(phase: VoicePhase, selfId: string | null, members: VoiceMember[]): boolean {
+  return phase === "joined" && !!selfId && !members.some((m) => m.id === selfId);
+}
+
 export const MIC_CONSTRAINTS: MediaStreamConstraints = {
   audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
 };
@@ -203,7 +211,15 @@ export function useVoice({ connRef, selfId, notify }: Options) {
     const next = !mutedRef.current;
     a.session.setMuted(next); // yerelde hemen; durum herkese simge için yayınlanır
     setMuted(next);
-    connRef.current?.setVoiceMuted(next).catch((e) => notifyRef.current(errorMessage(e), "error"));
+    connRef.current?.setVoiceMuted(next).catch((e) => {
+      // Sunucu kabul etmedi: başkaları eski durumu görüyor, yereli de geri al (oturum hâlâ aynıysa).
+      if (activeRef.current === a && mutedRef.current === next) {
+        a.session.setMuted(!next);
+        mutedRef.current = !next;
+        setMuted(!next);
+      }
+      notifyRef.current(errorMessage(e), "error");
+    });
   }, [connRef]);
 
   const setVolume = useCallback((id: string, value: number) => {
@@ -213,10 +229,18 @@ export function useVoice({ connRef, selfId, notify }: Options) {
   }, []);
 
   // Bağlantı olayları (LobbyPage'deki bağlantı kurulurken bir kez bağlanır, bu yüzden kararlı).
-  const onMembers = useCallback((list: VoiceMember[]) => {
-    setMembers(list);
-    activeRef.current?.session.setMembers(list);
-  }, []);
+  const onMembers = useCallback(
+    (list: VoiceMember[]) => {
+      setMembers(list);
+      if (lostVoiceMembership(phaseRef.current, selfIdRef.current, list)) {
+        teardown();
+        notifyRef.current(VOICE_LOST_TEXT, "info");
+        return;
+      }
+      activeRef.current?.session.setMembers(list);
+    },
+    [teardown],
+  );
 
   const onSignal = useCallback((fromId: string, kind: VoiceSignalKind, payload: string) => {
     void activeRef.current?.session.handleSignal(fromId, kind, payload);
@@ -224,6 +248,8 @@ export function useVoice({ connRef, selfId, notify }: Options) {
 
   /** SignalR koptu ya da yeniden bağlanıyor: sunucu üyeliği düşürür, biz de kapatırız (otomatik katılma yok). */
   const onConnectionDown = useCallback(() => {
+    // Liste bayatladı (n/6 ve dolu düğmesi yanlış kalmasın); tazesi yeniden JoinLobby'de gelir.
+    setMembers([]);
     if (!activeRef.current && phaseRef.current === "idle") return;
     teardown();
     notifyRef.current(VOICE_LOST_TEXT, "info");

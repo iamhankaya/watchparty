@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeIceServers } from "./connection";
-import { MIC_CONSTRAINTS, micErrorMessage } from "./useVoice";
+import { lostVoiceMembership, MIC_CONSTRAINTS, micErrorMessage } from "./useVoice";
 
 describe("micErrorMessage", () => {
   it("izin reddi ve cihaz yokluğu için Türkçe metin", () => {
@@ -27,5 +27,20 @@ describe("normalizeIceServers", () => {
 
   it("dizi değilse boş liste", () => {
     expect(normalizeIceServers(null)).toEqual([]);
+  });
+});
+
+describe("lostVoiceMembership", () => {
+  const me = { id: "me", nickname: "Ben", muted: false };
+  const other = { id: "o", nickname: "O", muted: false };
+  it("sesli sohbetteyken listede kendimiz yoksa üyelik düşmüştür", () => {
+    expect(lostVoiceMembership("joined", "me", [other])).toBe(true);
+    expect(lostVoiceMembership("joined", "me", [])).toBe(true);
+  });
+  it("listede varsak ya da katılmadıysak düşmüş sayılmaz", () => {
+    expect(lostVoiceMembership("joined", "me", [other, me])).toBe(false);
+    expect(lostVoiceMembership("joining", "me", [other])).toBe(false);
+    expect(lostVoiceMembership("idle", "me", [])).toBe(false);
+    expect(lostVoiceMembership("joined", null, [])).toBe(false);
   });
 });

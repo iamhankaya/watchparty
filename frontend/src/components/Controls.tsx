@@ -114,6 +114,7 @@ export function Controls(props: Props) {
         <button
           className={`icon small voice-mic${props.voiceMuted ? " is-muted" : ""}`}
           onClick={props.onToggleVoiceMute}
+          aria-label="Mikrofonu kapat"
           aria-pressed={props.voiceMuted}
           title={props.voiceMuted ? "Mikrofonu aç" : "Mikrofonu kapat"}
         >

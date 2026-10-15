@@ -48,6 +48,7 @@ export function VoiceBar({ phase, count, muted, online, onJoin, onLeave, onToggl
         <button
           className={`icon voice-mic${muted ? " is-muted" : ""}`}
           onClick={onToggleMute}
+          aria-label="Mikrofonu kapat"
           aria-pressed={muted}
           title={muted ? "Mikrofonu aç" : "Mikrofonu kapat"}
         >
