@@ -53,6 +53,7 @@ video.player-frame::cue { font-family: var(--body); font-size: 1.2rem; line-heig
   --cue-bg: rgba(22, 11, 15, 0.78);
   --cue-text: #f4e7dd;
   --waiting: #7fb6d9;
+  --backdrop: rgba(10, 4, 7, 0.72);
   --display: "Big Shoulders Display", "Arial Narrow", sans-serif;
   --body: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   color-scheme: dark;
@@ -81,6 +82,7 @@ video.player-frame::cue { font-family: var(--body); font-size: 1.2rem; line-heig
   --cue-bg: rgba(43, 18, 25, 0.78);
   --cue-text: #fffdfc;
   --waiting: #2c6a93;
+  --backdrop: rgba(43, 18, 25, 0.45);
   color-scheme: light;
 }
 
@@ -301,6 +303,34 @@ button.cn-board:hover:not(:disabled) { box-shadow: inset 0 0 0 1px var(--bulb), 
 .media-picker input { flex: 1; min-width: 200px; }
 .media-picker .error { flex-basis: 100%; margin: 0; }
 .media-picker .subtitle-row { display: flex; gap: 8px; flex-wrap: wrap; flex-basis: 100%; }
+.media-picker .upload-row { flex-basis: 100%; }
+.upload-open { display: inline-flex; align-items: center; gap: 8px; }
+
+/* Yükleme penceresi (yerel <dialog>, modal) */
+.upload-dialog { color: var(--text); width: min(480px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; box-shadow: 0 24px 60px -12px var(--shadow); }
+.upload-dialog::backdrop { background: var(--backdrop); }
+.upload-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.upload-head h3 { margin: 0; font-size: 1.1rem; }
+button.upload-close { padding: 2px 12px; font-size: 1.3rem; line-height: 1.4; }
+.upload-dialog input[type="password"] {
+  width: 100%;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 11px 14px;
+  outline: none;
+}
+.upload-dialog input[type="file"] { width: 100%; font-size: 0.9rem; }
+.upload-dialog input[type="file"]::file-selector-button { font: inherit; color: inherit; background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; margin-right: 10px; cursor: pointer; }
+.upload-progress { margin-top: 12px; }
+.upload-bar { height: 8px; border-radius: 99px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; }
+.upload-bar-fill { height: 100%; background: var(--primary); transition: width 0.3s; }
+.upload-stats { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 8px 0 0; color: var(--muted); }
+.upload-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; flex-wrap: wrap; }
+.upload-ok { color: var(--ok); font-weight: 600; margin: 0 0 12px; }
+.upload-link { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.upload-link-row { display: flex; gap: 8px; }
+.upload-link-row input { flex: 1; min-width: 0; font-size: 0.85rem; }
 
 /* Sağ panel: sekmeler, sohbet, kişiler */
 .cn-tabs { display: flex; border-bottom: 1px solid var(--line); padding: 0 8px; flex: none; }
