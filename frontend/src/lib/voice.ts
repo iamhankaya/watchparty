@@ -34,6 +34,7 @@ interface Peer {
   ignoreOffer: boolean;
   settingRemoteAnswer: boolean;
   restarted: boolean; // bu kopuşta restartIce denendi mi ("connected" olunca sıfırlanır)
+  tracksAdded: boolean; // yerel izler eklendi mi (polite taraf ilk offer'ı bekler)
 }
 
 /**
@@ -41,6 +42,11 @@ interface Peer {
  * MDN'deki "perfect negotiation" kalıbı. selfId < peerId olan taraf polite'tir:
  * çakışan offer'da kendi teklifini geri alıp (örtük rollback) karşı tarafınkini kabul eder;
  * impolite taraf çakışan offer'ı yok sayar.
+ *
+ * İlk bağlantıda çakışma hiç oluşturulmaz: polite taraf yerel izleri ilk offer gelince ekler,
+ * böylece kendi teklifini yapmaz ve yalnızca impolite taraf teklif eder. Chrome'da teklif sürerken
+ * (ICE toplama yeni başlamışken) yapılan rollback bazen ICE'ı kalıcı olarak "new"de bırakıyor:
+ * aday üretilmiyor, bağlantı hiç kurulmuyor. Sonraki müzakerelerde (restartIce) kalıp aynen geçerli.
  *
  * Yerel mikrofon akışının sahibi çağıran taraftır: stop() bağlantıları kapatır ama
  * akışın izlerini durdurmaz (mikrofonu kapatmak çağıranın işi).
@@ -127,6 +133,8 @@ export class VoiceSession {
           peer.settingRemoteAnswer = false;
         }
         if (kind === "offer") {
+          // Polite taraf izlerini şimdi ekler: offer'ın transceiver'ına bağlanır, answer sendrecv olur.
+          this.addTracks(peer);
           await pc.setLocalDescription();
           if (this.peers.get(fromId) !== peer) return; // bu arada kapandı
           this.cb.sendSignal(fromId, "answer", JSON.stringify(pc.localDescription));
@@ -187,7 +195,6 @@ export class VoiceSession {
   }
 
   private openPeer(id: string): Peer {
-    const stream = this.localStream!;
     const pc = this.deps.createPeer(this.config);
     const peer: Peer = {
       id,
@@ -197,6 +204,7 @@ export class VoiceSession {
       ignoreOffer: false,
       settingRemoteAnswer: false,
       restarted: false,
+      tracksAdded: false,
     };
     this.peers.set(id, peer);
     const alive = () => this.peers.get(id) === peer;
@@ -206,6 +214,8 @@ export class VoiceSession {
         peer.makingOffer = true;
         await pc.setLocalDescription();
         if (!alive()) return;
+        // Bu arada gelen offer rollback yaptıysa localDescription artık bizim teklifimiz değildir.
+        if (pc.signalingState !== "have-local-offer" || pc.localDescription?.type !== "offer") return;
         this.cb.sendSignal(id, "offer", JSON.stringify(pc.localDescription));
       } catch (err) {
         console.warn("Ses teklifi oluşturulamadı", err);
@@ -243,9 +253,16 @@ export class VoiceSession {
       }
     };
 
-    for (const track of stream.getTracks()) pc.addTrack(track, stream);
+    // Impolite taraf hemen ekler (negotiationneeded → offer); polite taraf ilk offer'ı bekler.
+    if (!peer.polite) this.addTracks(peer);
     this.cb.onPeerState(id, "connecting");
     return peer;
+  }
+
+  private addTracks(peer: Peer): void {
+    if (peer.tracksAdded || !this.localStream) return;
+    peer.tracksAdded = true;
+    for (const track of this.localStream.getTracks()) peer.pc.addTrack(track, this.localStream);
   }
 
   private closePeer(id: string): void {

@@ -19,7 +19,10 @@ class FakePeer {
     this.config = config;
   }
 
-  addTrack = vi.fn();
+  /** Tarayıcı gibi: stable iken iz eklenince negotiationneeded (sonraki mikro görevde) tetiklenir. */
+  addTrack = vi.fn(() => {
+    if (this.signalingState === "stable") queueMicrotask(() => this.onnegotiationneeded?.());
+  });
   restartIce = vi.fn();
   close = vi.fn(() => {
     this.closed = true;
@@ -100,12 +103,30 @@ function sentOf(kind: string) {
 describe("VoiceSession üyelik", () => {
   beforeEach(() => setup("b"));
 
-  test("yeni üye için bağlantı açılır, yerel izler eklenir; kendisi için açılmaz", () => {
-    session.setMembers([member("b"), member("c")]);
+  test("yeni üye için bağlantı açılır, impolite taraf yerel izleri ekler; kendisi için açılmaz", () => {
+    session.setMembers([member("b"), member("a")]); // "b" > "a" → impolite
     expect(peers).toHaveLength(1);
     expect(peers[0].config.iceServers).toEqual([{ urls: ["stun:stun.example:19302"] }]);
     expect(peers[0].addTrack).toHaveBeenCalledWith(track, stream);
-    expect(cb.onPeerState).toHaveBeenCalledWith("c", "connecting");
+    expect(cb.onPeerState).toHaveBeenCalledWith("a", "connecting");
+  });
+
+  test("polite taraf ilk offer gelene kadar iz eklemez ve teklif yapmaz", async () => {
+    session.setMembers([member("b"), member("c")]); // "b" < "c" → polite
+    await flush();
+    expect(peers).toHaveLength(1);
+    expect(peers[0].addTrack).not.toHaveBeenCalled();
+    expect(sentOf("offer")).toHaveLength(0);
+
+    await session.handleSignal("c", "offer", JSON.stringify({ type: "offer", sdp: "uzak" }));
+    await flush();
+    // İzler uzak offer uygulandıktan sonra, answer'dan önce eklenir (offer'ın transceiver'ına bağlanır).
+    expect(peers[0].addTrack).toHaveBeenCalledWith(track, stream);
+    const order = (fn: ReturnType<typeof vi.fn>) => fn.mock.invocationCallOrder[0];
+    expect(order(peers[0].addTrack)).toBeGreaterThan(order(peers[0].setRemoteDescription));
+    expect(order(peers[0].addTrack)).toBeLessThan(order(peers[0].setLocalDescription));
+    expect(sentOf("answer")).toHaveLength(1);
+    expect(sentOf("offer")).toHaveLength(0);
   });
 
   test("aynı liste tekrar gelince yeni bağlantı açılmaz", () => {
@@ -346,6 +367,71 @@ describe("VoiceSession perfect negotiation", () => {
     expect(peersB[0].setRemoteDescription).toHaveBeenCalledWith(
       expect.objectContaining({ type: "answer" }),
     );
+  });
+
+  test("teklif hazırlanırken rollback olduysa eski localDescription offer diye gönderilmez", async () => {
+    setup("a"); // polite
+    session.setMembers([member("c")]);
+    await session.handleSignal("c", "offer", JSON.stringify({ type: "offer", sdp: "ilk" }));
+    await flush();
+    cb.sendSignal.mockClear();
+    // Sonraki bir müzakere (ör. restartIce): sLD sürerken karşıdan offer gelir ve rollback olur.
+    let release!: () => void;
+    peers[0].setLocalDescription.mockImplementationOnce(
+      () =>
+        new Promise<void>((r) => {
+          release = () => {
+            // Tarayıcıda sLD tamamlanır ama ardından kuyruktaki sRD(offer) rollback yapıp yanıtlar.
+            peers[0].signalingState = "stable";
+            peers[0].localDescription = { type: "answer", sdp: "yerel-answer" };
+            r();
+          };
+        }),
+    );
+    peers[0].onnegotiationneeded?.();
+    release();
+    await flush();
+    expect(sentOf("offer")).toHaveLength(0);
+  });
+
+  test("iki oturum aynı anda bağlanınca çakışma (rollback) olmaz: yalnızca impolite teklif yapar", async () => {
+    const sent: string[] = [];
+    const make = (selfId: string, list: FakePeer[], other: () => VoiceSession) =>
+      new VoiceSession(
+        {
+          createPeer: (config) => {
+            const p = new FakePeer(config);
+            list.push(p);
+            return p as unknown as RTCPeerConnection;
+          },
+        },
+        {
+          sendSignal: (_to, kind, payload) => {
+            sent.push(`${selfId}:${kind}`);
+            setTimeout(() => void other().handleSignal(selfId, kind, payload), 0);
+          },
+          onRemoteStream: () => {},
+          onPeerState: () => {},
+          onPeerClosed: () => {},
+        },
+      );
+    const peersA: FakePeer[] = [];
+    const peersB: FakePeer[] = [];
+    const a: VoiceSession = make("a", peersA, () => b);
+    const b: VoiceSession = make("b", peersB, () => a);
+    a.start(fakeStream(), ICE, "a");
+    b.start(fakeStream(), ICE, "b");
+    a.setMembers([member("a"), member("b")]);
+    b.setMembers([member("a"), member("b")]);
+    for (let i = 0; i < 10; i++) await flush();
+
+    // Chrome'da teklif sürerken yapılan rollback ICE'ı bazen kilitliyor; ilk bağlantıda hiç olmamalı.
+    expect(sent.filter((x) => x.endsWith(":offer"))).toEqual(["b:offer"]);
+    expect(sent).toContain("a:answer");
+    expect(peersA[0].setLocalDescription).toHaveBeenCalledTimes(1); // yalnızca answer
+    expect(peersA[0].signalingState).toBe("stable");
+    expect(peersB[0].signalingState).toBe("stable");
+    expect(peersA[0].addTrack).toHaveBeenCalledTimes(1);
   });
 
   test("offer hazırlanırken (makingOffer) gelen offer da çakışma sayılır", async () => {
