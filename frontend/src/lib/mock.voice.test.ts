@@ -69,7 +69,7 @@ describe("MockLobbyConnection sesli sohbet", () => {
     await expect(conn.joinVoice()).rejects.toThrow("Önce bir lobiye katıl");
   });
 
-  it("katılma yayınlanır, tekrar katılma aynı sonucu döner ve yayın yapmaz", async () => {
+  it("katılma yayınlanır, tekrar katılma aynı sonucu döner ve listeyi yeniden yayınlar", async () => {
     const code = await mockApi.createLobby("c-A", false);
     const a = await client(code, "A");
     const b = await client(code, "B");
@@ -83,8 +83,9 @@ describe("MockLobbyConnection sesli sohbet", () => {
     const again = await a.conn.joinVoice();
     expect(again.members).toEqual(r.members);
     await tick();
-    expect(a.log.members).toHaveLength(1);
-    expect(b.log.members).toHaveLength(1);
+    // Hub gibi: listesi bayatlamış istemciler düzelsin diye tekrar katılmada da yayın yapılır.
+    expect(a.log.members).toHaveLength(2);
+    expect(b.log.members).toEqual([r.members, r.members]);
   });
 
   it("lobiye sonradan katılan, o anki sesli üye listesini hemen alır", async () => {
@@ -118,17 +119,18 @@ describe("MockLobbyConnection sesli sohbet", () => {
     await expect(clients[6].conn.joinVoice()).rejects.toThrow("Sesli sohbet dolu");
   });
 
-  it("sessize alma her seferinde yayınlanır; üye değilse ayrılma/sessize alma sessizdir", async () => {
+  it("sessize alma değişince yayınlanır; aynı değer ya da üye değilse ayrılma/sessize alma sessizdir", async () => {
     const code = await mockApi.createLobby("c-A", false);
     const a = await client(code, "A");
     const b = await client(code, "B");
     await b.conn.leaveVoice();
     await b.conn.setVoiceMuted(true);
     await a.conn.joinVoice();
+    await a.conn.setVoiceMuted(false); // zaten açık
     await a.conn.setVoiceMuted(true);
-    await a.conn.setVoiceMuted(true);
+    await a.conn.setVoiceMuted(true); // değişmedi
     await tick();
-    expect(b.log.members.map((m) => m[0]?.muted)).toEqual([false, true, true]);
+    expect(b.log.members.map((m) => m[0]?.muted)).toEqual([false, true]);
     await a.conn.leaveVoice();
     await tick();
     expect(b.log.members.at(-1)).toEqual([]);

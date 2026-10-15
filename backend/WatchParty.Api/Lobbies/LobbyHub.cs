@@ -192,7 +192,8 @@ public class LobbyHub(ILobbyStore store, IOptions<VoiceOptions> voiceOptions) : 
         await Clients.Group(lobby.Code).SendAsync("ChatMessage", message);
     }
 
-    // Sesli sohbete katılır. Zaten üyeyse aynı sonucu döner, yayın yapmaz.
+    // Sesli sohbete katılır. Zaten üyeyse aynı sonucu döner; yayın yine yapılır ki listesi bayatlamış
+    // istemciler düzelsin.
     public async Task<VoiceJoinResult> JoinVoice()
     {
         var lobby = CurrentLobby() ?? throw new HubException("Önce bir lobiye katıl");
@@ -204,6 +205,7 @@ public class LobbyHub(ILobbyStore store, IOptions<VoiceOptions> voiceOptions) : 
             case VoiceJoinOutcome.Full:
                 throw new HubException("Sesli sohbet dolu");
             case VoiceJoinOutcome.Joined:
+            case VoiceJoinOutcome.AlreadyMember:
                 await LobbyEvents.SendVoiceMembers(Clients, lobby);
                 break;
         }
@@ -219,7 +221,7 @@ public class LobbyHub(ILobbyStore store, IOptions<VoiceOptions> voiceOptions) : 
             await LobbyEvents.SendVoiceMembers(Clients, lobby);
     }
 
-    // Üye değilse sessizce yok sayılır.
+    // Üye değilse sessizce yok sayılır; değer değişmediyse yayın yapılmaz.
     public async Task SetVoiceMuted(bool muted)
     {
         var lobby = CurrentLobby();

@@ -430,7 +430,7 @@ export class MockLobbyConnection implements LobbyConnection {
     return Date.now();
   }
 
-  /** Hub.JoinVoice: lobi yoksa hata; zaten üyeyse aynı sonuç (yayın yok); 6 doluysa hata. */
+  /** Hub.JoinVoice: lobi yoksa hata; zaten üyeyse aynı sonuç (yine yayınlanır); 6 doluysa hata. */
   async joinVoice(): Promise<VoiceJoinResult> {
     await delay();
     const lobby = this.lobby();
@@ -441,8 +441,9 @@ export class MockLobbyConnection implements LobbyConnection {
       if (voice.length >= MAX_VOICE) throw new Error("HubException: Sesli sohbet dolu");
       lobby.voice = [...voice, { id: this.tabId, muted: false }];
       save(lobbyKey(lobby.code), lobby);
-      this.broadcast({ type: "voice", code: lobby.code, members: voiceMembers(lobby.code) });
     }
+    // Hub gibi tekrar katılmada da yayın: listesi bayatlamış sekmeler düzelsin.
+    this.broadcast({ type: "voice", code: lobby.code, members: voiceMembers(lobby.code) });
     return { members: voiceMembers(lobby.code), iceServers: ICE_SERVERS.map((s) => ({ urls: [...s.urls] })) };
   }
 
@@ -456,12 +457,12 @@ export class MockLobbyConnection implements LobbyConnection {
     this.broadcast({ type: "voice", code: lobby.code, members: voiceMembers(lobby.code) });
   }
 
-  /** Hub.SetVoiceMuted: üye değilse sessiz; üyeyse değer değişmese de yayınlar. */
+  /** Hub.SetVoiceMuted: üye değilse ya da değer değişmediyse sessiz; değiştiyse yayınlar. */
   async setVoiceMuted(muted: boolean) {
     await delay();
     const lobby = this.code ? load<MockLobby>(lobbyKey(this.code)) : null;
     const me = lobby?.voice?.find((v) => v.id === this.tabId);
-    if (!lobby || !me) return;
+    if (!lobby || !me || me.muted === muted) return; // hub gibi: değişmediyse yayın yok
     me.muted = muted;
     save(lobbyKey(lobby.code), lobby);
     this.broadcast({ type: "voice", code: lobby.code, members: voiceMembers(lobby.code) });

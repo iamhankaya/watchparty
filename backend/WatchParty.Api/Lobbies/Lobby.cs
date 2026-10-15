@@ -251,12 +251,13 @@ public class Lobby
             return _voice.RemoveAll(v => v.ConnectionId == connectionId) > 0;
     }
 
-    // Üyeyse sessiz durumunu ayarlar ve true döner; üye değilse false.
+    // Üyeyse sessiz durumunu ayarlar; değer değiştiyse true döner (yayın gerekir). Üye değilse ya da
+    // değer aynıysa false.
     public bool SetVoiceMuted(string connectionId, bool muted)
     {
         lock (Gate)
         {
-            if (FindVoice(connectionId) is not { } member)
+            if (FindVoice(connectionId) is not { } member || member.Muted == muted)
                 return false;
             member.Muted = muted;
             return true;

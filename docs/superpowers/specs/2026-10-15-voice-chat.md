@@ -23,9 +23,9 @@ Kaynak: 2026-10-15 brainstorming'i. Aynı lobidekiler isterse yazılı sohbetin 
 **Durum.** `Lobby`'de sesli sohbet üyeleri: bağlantı kimliği → `{ Muted }` (yalnızca `Gate` altında, `Lobby` metotlarıyla: `TryJoinVoice(connectionId)`, `LeaveVoice(connectionId)`, `SetVoiceMuted(connectionId, bool)`, `VoiceMembers()` — salt okunur görünüm). Lobiden ayrılan/kopan kişi sesli sohbetten de çıkar (`Lobby.Leave` içinde ya da hemen ardından).
 
 **Hub metotları:**
-- `JoinVoice()` → `VoiceJoinResult(VoiceMemberView[] Members, IceServerView[] IceServers)`. Lobi yoksa `"Önce bir lobiye katıl"`; 6 dolu ise `"Sesli sohbet dolu"`; zaten üyeyse aynı sonucu döner (idempotent). Başarıda tüm lobiye `VoiceMembersChanged(members)`.
+- `JoinVoice()` → `VoiceJoinResult(VoiceMemberView[] Members, IceServerView[] IceServers)`. Lobi yoksa `"Önce bir lobiye katıl"`; 6 dolu ise `"Sesli sohbet dolu"`; zaten üyeyse aynı sonucu döner (idempotent). Başarıda (tekrar katılmada da, bayat listeler düzelsin diye) tüm lobiye `VoiceMembersChanged(members)`.
 - `LeaveVoice()` → üyelikten çıkar, `VoiceMembersChanged`. Üye değilse sessiz.
-- `SetVoiceMuted(bool muted)` → üye değilse sessiz; değilse `VoiceMembersChanged`.
+- `SetVoiceMuted(bool muted)` → üye değilse ya da değer değişmediyse sessiz; değiştiyse `VoiceMembersChanged`.
 - `VoiceSignal(string toId, string kind, string payload)` → yalnızca **gönderen ve alıcı aynı lobide ve ikisi de sesli sohbet üyesiyse** alıcıya `VoiceSignal(fromId, kind, payload)` iletilir; değilse sessizce düşer (yarış durumları normal). `kind` ∈ `offer`, `answer`, `candidate`; başka değer → `"Geçersiz ses sinyali"`; `payload` en fazla **16 384** karakter → aşarsa `"Ses sinyali çok büyük"`.
 - `VoiceMemberView(string Id, string Nickname, bool Muted)`; `IceServerView(string[] Urls, string? Username, string? Credential)` (TURN eklenirse kullanıcı adı/şifre buradan gelir).
 

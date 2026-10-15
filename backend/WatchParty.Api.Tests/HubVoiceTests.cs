@@ -149,11 +149,18 @@ public class HubVoiceTests
         var code = await factory.CreateLobbyAsync("host");
         await using var a = await JoinAsync(factory, code, "Ayse");
 
+        await using var b = await JoinAsync(factory, code, "Mehmet");
+
         var first = await a.JoinVoice();
+        Assert.Equal([a.SelfId], Ids(await b.NextMembers()));
         var second = await a.JoinVoice();
 
         Assert.Equal(first.GetRawText(), second.GetRawText());
         Assert.Single(second.GetProperty("members").EnumerateArray());
+        // Tekrar katılma da listeyi yayınlar: listesi bayatlamış istemciler düzelir.
+        Assert.Equal([a.SelfId], Ids(await b.NextMembers()));
+        await Settle();
+        Assert.False(b.HasPendingMembers);
     }
 
     [Fact]
@@ -192,6 +199,24 @@ public class HubVoiceTests
         Assert.True(Assert.Single(members.EnumerateArray()).GetProperty("muted").GetBoolean());
 
         await b.Invoke("SetVoiceMuted", true);
+        await Settle();
+        Assert.False(b.HasPendingMembers);
+    }
+
+    [Fact]
+    public async Task SetVoiceMuted_with_unchanged_value_does_not_broadcast()
+    {
+        await using var factory = new WatchPartyFactory();
+        var code = await factory.CreateLobbyAsync("host");
+        await using var a = await JoinAsync(factory, code, "Ayse");
+        await using var b = await JoinAsync(factory, code, "Mehmet");
+        await a.JoinVoice();
+        await b.NextMembers();
+
+        await a.Invoke("SetVoiceMuted", false); // zaten açık
+        await a.Invoke("SetVoiceMuted", true);
+        Assert.True(Assert.Single((await b.NextMembers()).EnumerateArray()).GetProperty("muted").GetBoolean());
+        await a.Invoke("SetVoiceMuted", true); // değişmedi
         await Settle();
         Assert.False(b.HasPendingMembers);
     }

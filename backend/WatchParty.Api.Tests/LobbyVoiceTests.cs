@@ -81,6 +81,19 @@ public class LobbyVoiceTests
     }
 
     [Fact]
+    public void SetVoiceMuted_returns_false_when_value_unchanged()
+    {
+        var lobby = LobbyWith(1);
+        lobby.TryJoinVoice("c0");
+
+        Assert.False(lobby.SetVoiceMuted("c0", false));
+        Assert.True(lobby.SetVoiceMuted("c0", true));
+        Assert.False(lobby.SetVoiceMuted("c0", true));
+        Assert.True(lobby.SetVoiceMuted("c0", false));
+        Assert.Equal([new VoiceMemberView("c0", "n0", false)], lobby.VoiceMembers());
+    }
+
+    [Fact]
     public void Leave_also_removes_voice_membership()
     {
         var lobby = LobbyWith(2);
