@@ -85,6 +85,13 @@ src/
 - Yerel geliştirmede yalnızca `frontend/public` içindeki dosyalar aynı alandadır.
 - Kişisel ayar: **CC** düğmesi altyazıyı bu izleyici için açar/kapar (`localStorage` `wp:subtitles`, varsayılan açık); herkesin ekranını etkilemez.
 
+## Bilgisayardan yükleme
+
+- `MediaPicker`'daki "Bilgisayardan yükle" düğmesi `UploadDialog`'u açar. Mock modunda (`VITE_MOCK`) düğme gizlidir: yükleme gerçek sunucu gerektirir.
+- Akış: yükleme anahtarı gir ("Bu tarayıcıda hatırla" → `localStorage` `wp:uploadKey`; anahtar biçimi (32 harf/rakam) istemcide denetlenir, kayıt ancak sunucu başlatma isteğini kabul edince yapılır) → MP4 (`.mp4`/`.m4v`, en fazla 6 GB) ve isteğe bağlı altyazı (`.srt`/`.vtt`, en fazla 2 MB) seç (uzantı/boyut istemcide de denetlenir) → "Yükle" → ilerleme çubuğu, yüzde, hız (son 5 sn) ve kalan süre; "İptal" yüklemeyi durdurur → bitince linkler (kopyala) ve `canControl` iken "Lobide aç" (önce video, varsa sonra altyazı lobiye gönderilir). Pencerede not: "En iyi sonuç için H.264 video ve AAC ses içeren MP4 kullanın."
+- `lib/upload.ts` motoru (`uploadVideo`, `uploadSubtitle`): sunucudan parça planı ve presigned URL'ler alınır (`/api/uploads/video`, `/parts` 50'lik partilerle), tarayıcı parçaları doğrudan S3'e `PUT` eder. Parça 16 MB, aynı anda 4 parça, parça başına ilk deneme + 3 yeniden deneme (1/2/4 sn bekleme; süresi dolmuş URL için 403 gelirse URL bir kez yeniden istenir); ETag'ler PUT yanıt başlığından okunup `/complete`'e sırayla gönderilir. Hata ya da `AbortSignal` iptali en iyi çabayla `/abort` çağırır (hatalar yutulur; başlatma çağrısı sürerken iptal ya da sekmeyi kapatmak abort göndermez). Geride kalan yarım yüklemeleri bucket'ın 2 günlük yaşam döngüsü kuralı temizler. Her istek `X-Upload-Key` taşır; sunucu hata metinleri (ör. "Yükleme anahtarı geçersiz") olduğu gibi gösterilir. Altyazı tek bir `PUT`'tur.
+- Dosya sunucudan geçmediği için S3 tarafında CORS ve CSP `connect-src` gerekir (bkz. `deploy/README.md`). Testler sahte `fetch` ile `lib/upload.test.ts`'te.
+
 ## Sohbet bildirimi ve "yazıyor…"
 
 - Ses: başkasının **yeni** mesajı gelince ve mesaj görünmüyorken (`document.hidden`, pencere odakta değil ya da tam ekranda sohbet kapalı)
@@ -98,7 +105,21 @@ src/
   İstemci (`lib/typing.ts` `TypingTracker`) aynı takma adı tek kez sayar ve bir kişiyi son bildirimden 5 sn sonra, o kişiden mesaj gelince ya da katılımcı listesinden çıkınca kaldırır.
   Metin: 1 kişi "<ad> yazıyor…", 2 kişi "<ad1> ve <ad2> yazıyor…", 3 ve üstü "<n> kişi yazıyor…".
 
+## Sesli sohbet
+
+- Ses tarayıcılar arasında doğrudan (WebRTC, herkes herkese "mesh", en fazla 6 kişi) gider; sunucu ses görmez, yalnızca `JoinVoice`/`VoiceSignal` ile tanıştırır (offer/answer/ICE adayı iletimi).
+- Katılınca `getUserMedia` (yankı engelleme, gürültü bastırma, otomatik kazanç açık) alınır, `JoinVoice` sonucundaki üye listesi ve `iceServers` ile `VoiceSession` (`lib/voice.ts`) başlar. Oturum `JoinVoice` çağrılmadan önce oluşturulur ve gelen sinyallerin hedefi olur (`joinVoiceBuffered`): karşı tarafın ilk teklifi `JoinVoice` sonucundan önce gelirse (long polling'de sık) tamponlanır ve `start()`'ta işlenir; katılma başarısız ya da bayatsa tampon atılır. İzin reddedilirse "Mikrofon izni verilmedi", cihaz yoksa "Mikrofon bulunamadı".
+- `VoiceSession` eş başına bir `RTCPeerConnection` açar; listeye yeni giren eş için bağlantı kurulur, çıkanınki kapanır. Çakışan teklifler "perfect negotiation" ile çözülür: `selfId < peerId` olan taraf polite'tır (çakışmada geri çekilip karşı teklifi kabul eder), diğeri (impolite) gelen teklifi çakışmada yok sayar. İlk bağlantıda çakışma hiç oluşmaz: polite taraf yerel izlerini ilk teklif gelince ekler, yani yalnızca impolite taraf teklif yapar (Chrome'da teklif sürerken yapılan rollback bazen ICE'ı "new"de kilitliyor). Lobiye katılan (ya da yeniden bağlanan) istemci o anki sesli üye listesini `JoinLobby` sırasında alır. Bağlantı `failed` olursa yalnızca impolite taraf bir kez `restartIce()` dener (iki taraf birden denerse yine çakışma olur), olmazsa kişinin yanında "Bağlanamadı" görünür.
+- Sessiz başarısızlık yok: her eş için bir bekçi (`VOICE_WATCHDOG_MS`, 15 sn) çalışır, eş "connected" olunca durur. Süre dolarsa impolite taraf yanıtsız teklifini yeniden gönderir (müzakere bittiyse `restartIce()`), hiç teklif almamış polite taraf (süresi 5 sn daha uzun) izlerini ekleyip kendisi teklif eder. İkinci süre de dolarsa "Bağlanamadı" gösterilir; sonradan bağlanırsa gösterge kalkar.
+- Konuşma göstergesi (`lib/speaking.ts` `SpeakingDetector`): her istemci kendi mikrofonundan ve gelen akışlardan `AnalyserNode` ile RMS hesaplar (100 ms'de bir), eşik + 300 ms tutma süresiyle konuşuyor/konuşmuyor kararı verir. Sunucuya hiçbir şey gitmez.
+- Sessize alma yerel (`track.enabled = false`) ve ayrıca `SetVoiceMuted` ile yayınlanır (simge için; değer değişmediyse yayın yapılmaz). `JoinVoice` tekrar çağrılırsa (zaten üye) liste yine yayınlanır. Kişi başı ses düzeyi yalnızca kendi ekranındadır, oturumluktur (saklanmaz) ve film sesinden ayrıdır.
+- SignalR yeniden bağlanınca sunucuda sesli sohbet üyeliği düşer; istemci otomatik yeniden katılmaz, şerit "Sesli sohbete katıl" durumuna döner ve "Bağlantı koptu; sesli sohbetten çıkıldı" bildirimi gösterilir.
+- Mock (`lib/mock.ts`) aynı kuralları uygular; sinyaller BroadcastChannel ile iletilir, aynı tarayıcıdaki sekmeler arasında gerçek WebRTC çalışır. 6 kişi sınırı `types.ts` `MAX_VOICE`, `mock.ts` ve backend `Lobby.MaxVoiceMembers`'ta eş tutulmalı.
+- **TURN eklemek** istemciyi değiştirmez: ICE sunucuları backend'den gelir, yalnızca backend'deki `Voice:IceServers` ayarına TURN girdisi (`Urls`, `Username`, `Credential`) eklenir (bkz. `deploy/README.md`). TURN olmadan bazı simetrik NAT/kurumsal ağlarda bağlantı kurulamaz ("Bağlanamadı").
+
 ## Bilinen sınırlar
+
+- iOS Safari: kişi başı ses düzeyi ve konuşma göstergesi çalışmayabilir. iOS `<audio>` öğesinin `volume` değerini yok sayar (düzey her zaman tam) ve Web Audio'yu yalnızca kullanıcı etkileşimi sırasında açılan bir `AudioContext` ile çalıştırır; `SpeakingDetector.prime()` bunu "Sesli sohbete katıl" tıklamasında, ilk `await`'ten önce yapar ama yine de garanti değildir. Ses iletimi bundan etkilenmez.
 
 - Backend medya id'sini en fazla 200 karakter kabul ediyor; çok uzun (ör. imzalı) film URL'leri reddedilir.
   S3/CloudFront adımında burada URL yerine film id'si gönderilecek.

@@ -96,3 +96,20 @@ resource "aws_cloudfront_cache_policy" "videos" {
     }
   }
 }
+
+# Tarayıcıdan doğrudan yükleme: presigned PUT (multipart parçaları ve altyazı) yalnızca sitenin
+# origin'inden (ve isteğe bağlı geliştirme origin'inden) gelir. ETag, multipart tamamlama için okunur.
+resource "aws_s3_bucket_cors_configuration" "videos" {
+  bucket = aws_s3_bucket.videos.id
+
+  cors_rule {
+    allowed_origins = concat(
+      ["https://${aws_cloudfront_distribution.main.domain_name}"],
+      var.upload_dev_origin != "" ? [var.upload_dev_origin] : []
+    )
+    allowed_methods = ["PUT"]
+    allowed_headers = ["*"]
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
+  }
+}

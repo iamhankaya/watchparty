@@ -43,3 +43,21 @@ export function expectedPosition(state: PlaybackState, serverNow: number): numbe
   if (!state.isPlaying || (state.waitingFor?.length ?? 0) > 0) return state.positionSec;
   return Math.max(0, state.positionSec + (serverNow - state.updatedAt) / 1000);
 }
+
+// Sesli sohbet (WebRTC mesh). Sınır backend'deki Lobby.MaxVoiceMembers ve mock.ts ile eş tutulur.
+export const MAX_VOICE = 6;
+
+export interface VoiceMember {
+  id: string; // bağlantı kimliği (Participant.id ile aynı)
+  nickname: string;
+  muted: boolean;
+}
+
+// Sunucunun Voice:IceServers ayarından gelen ICE sunucusu (STUN; TURN eklenirse kullanıcı adı/şifre).
+export interface IceServer {
+  urls: string[];
+  username?: string;
+  credential?: string;
+}
+
+export type VoiceSignalKind = "offer" | "answer" | "candidate";

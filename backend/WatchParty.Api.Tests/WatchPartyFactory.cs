@@ -18,6 +18,7 @@ public class WatchPartyFactory(Dictionary<string, string?>? overrides = null) : 
         {
             ["Security:CreateLobbyPerMinute"] = "1000",
             ["Security:LookupLobbyPerMinute"] = "1000",
+            ["Security:UploadPerMinute"] = "1000",
             ["Security:MaxConnectionsPerIp"] = "1000",
         };
         if (overrides is not null)

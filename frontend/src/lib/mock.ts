@@ -2,11 +2,13 @@
  * Backend olmadan geliştirme için sahte sunucu (npm run dev:mock).
  * Aynı tarayıcıdaki sekmeler localStorage + BroadcastChannel ile ortak bir "sunucu" paylaşır.
  * Hub'daki kurallar taklit edilir: 20 kişi sınırı, sadece-host modu, host devri, altyazı kuralları,
- * takılana göre bekleme (Lobby.StartWaiting/StopWaiting/ClearWaiting/ExpireWaits).
+ * takılana göre bekleme (Lobby.StartWaiting/StopWaiting/ClearWaiting/ExpireWaits), sesli sohbet
+ * (en fazla 6 üye, idempotent katılma, sinyaller BroadcastChannel ile yalnızca hedef sekmeye; aynı
+ * tarayıcıdaki sekmeler arasında gerçek WebRTC bağlantısı kurulur).
  */
-import type { LobbyConnection, LobbyEvents } from "./connection";
-import type { ChatMessage, JoinResult, MediaType, Participant, PlaybackState } from "./types";
-import { MAX_MEDIA_ID, MAX_PARTICIPANTS } from "./types";
+import type { LobbyConnection, LobbyEvents, VoiceJoinResult } from "./connection";
+import type { ChatMessage, IceServer, JoinResult, MediaType, Participant, PlaybackState, VoiceMember, VoiceSignalKind } from "./types";
+import { MAX_MEDIA_ID, MAX_PARTICIPANTS, MAX_VOICE } from "./types";
 
 interface MockLobby {
   code: string;
@@ -22,6 +24,8 @@ interface MockLobby {
   strikes?: Record<string, number[]>;
   /** Yok sayılma bildirildi: clientId -> pencerenin sonu (ms). */
   ignoredUntil?: Record<string, number>;
+  /** Sesli sohbet üyeleri, katılma sırasıyla (eski localStorage verisinde olmayabilir). */
+  voice?: { id: string; muted: boolean }[];
 }
 
 interface Presence {
@@ -38,7 +42,10 @@ type Message =
   | { type: "host"; code: string; nickname: string }
   | { type: "chat"; code: string; message: ChatMessage }
   | { type: "bufferingIgnored"; code: string; nickname: string }
-  | { type: "typing"; code: string; id: string; nickname: string };
+  | { type: "typing"; code: string; id: string; nickname: string }
+  // Liste mesajın içinde gelir: alıcının localStorage'ı yazan sekmeninkinin gerisinde kalabilir.
+  | { type: "voice"; code: string; members: VoiceMember[] }
+  | { type: "voiceSignal"; code: string; to: string; from: string; kind: VoiceSignalKind; payload: string };
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const PRESENCE_TIMEOUT = 6000;
@@ -46,6 +53,10 @@ const PRESENCE_TIMEOUT = 6000;
 const MAX_WAIT = 10_000;
 const STRIKE_WINDOW = 5 * 60_000;
 const MAX_STRIKES = 3;
+// LobbyHub.VoiceSignalKinds, MaxVoiceSignalLength ve appsettings.json'daki varsayılan ICE sunucusu ile aynı.
+const VOICE_SIGNAL_KINDS: readonly string[] = ["offer", "answer", "candidate"];
+const MAX_VOICE_SIGNAL = 16384;
+const ICE_SERVERS: IceServer[] = [{ urls: ["stun:stun.l.google.com:19302"] }];
 const lobbyKey = (code: string) => `wpmock:lobby:${code}`;
 const presenceKey = (code: string) => `wpmock:presence:${code}`;
 
@@ -76,6 +87,13 @@ function participants(code: string): Participant[] {
   return Object.entries(activePresence(code))
     .sort(([, a], [, b]) => a.joinedAt - b.joinedAt)
     .map(([id, p]) => ({ id, nickname: p.nickname, isHost: p.clientId === lobby?.hostClientId }));
+}
+
+/** Lobby.VoiceMembers: katılma sırasıyla, takma ad katılımcı kaydından; düşmüş (sekmesi kapanmış) kişiler sayılmaz. */
+function voiceMembers(code: string): VoiceMember[] {
+  const lobby = load<MockLobby>(lobbyKey(code));
+  const active = activePresence(code);
+  return (lobby?.voice ?? []).filter((v) => active[v.id]).map((v) => ({ id: v.id, nickname: active[v.id].nickname, muted: v.muted }));
 }
 
 export const mockApi = {
@@ -113,6 +131,8 @@ export class MockLobbyConnection implements LobbyConnection {
   private clientId = "";
   private heartbeat: number | undefined;
   private waitTimer: number | undefined;
+  /** Bildiğimiz son sesli üye listesi (VoiceSignal üyelik kontrolü için; localStorage'dan okumak gecikmeli olabilir). */
+  private voiceIds = new Set<string>();
 
   constructor(private events: LobbyEvents) {
     this.channel.onmessage = (e: MessageEvent<Message>) => this.receive(e.data);
@@ -136,6 +156,13 @@ export class MockLobbyConnection implements LobbyConnection {
         return this.events.bufferingIgnored(msg.nickname);
       case "typing":
         return this.events.userTyping(msg.id, msg.nickname);
+      case "voice":
+        this.voiceIds = new Set(msg.members.map((m) => m.id));
+        return this.events.voiceMembersChanged(msg.members);
+      case "voiceSignal":
+        // Clients.Client(toId): yalnızca hedef sekme alır.
+        if (msg.to === this.tabId) this.events.voiceSignal(msg.from, msg.kind, msg.payload);
+        return;
     }
   }
 
@@ -194,7 +221,20 @@ export class MockLobbyConnection implements LobbyConnection {
     save(presenceKey(this.code), all);
     this.transferHostIfGone();
     if (JSON.stringify(participants(this.code)) !== before) this.broadcast({ type: "participants", code: this.code });
+    this.pruneVoice();
   };
+
+  /** OnDisconnectedAsync karşılığı: sekmesi kapanmış (varlığı düşmüş) sesli üyeler çıkarılır ve yayınlanır. */
+  private pruneVoice() {
+    const lobby = this.code ? load<MockLobby>(lobbyKey(this.code)) : null;
+    if (!lobby?.voice?.length) return;
+    const active = activePresence(lobby.code);
+    const kept = lobby.voice.filter((v) => active[v.id]);
+    if (kept.length === lobby.voice.length) return;
+    lobby.voice = kept;
+    save(lobbyKey(lobby.code), lobby);
+    this.broadcast({ type: "voice", code: lobby.code, members: voiceMembers(lobby.code) });
+  }
 
   private transferHostIfGone() {
     const lobby = this.lobby();
@@ -214,6 +254,12 @@ export class MockLobbyConnection implements LobbyConnection {
     this.channel.postMessage({ type: "participants", code: this.code } satisfies Message);
     // OnDisconnectedAsync: ayrılan kişi bekleme listesinden çıkar (katılımcı listesinden sonra).
     const lobby = load<MockLobby>(lobbyKey(this.code));
+    // Sesli sohbetten de çıkar (katılımcı listesinden sonra, hub'daki sırayla).
+    if (lobby?.voice?.some((v) => v.id === this.tabId)) {
+      lobby.voice = lobby.voice.filter((v) => v.id !== this.tabId);
+      save(lobbyKey(lobby.code), lobby);
+      this.channel.postMessage({ type: "voice", code: lobby.code, members: voiceMembers(lobby.code) } satisfies Message);
+    }
     if (lobby?.waits?.[this.tabId] !== undefined) this.removeWaiters(lobby, [this.tabId]);
   };
 
@@ -255,6 +301,10 @@ export class MockLobbyConnection implements LobbyConnection {
     this.events.chatHistory(lobby.chat);
     const result = { selfId: this.tabId, isHost: clientId === lobby.hostClientId };
     this.events.joined(result);
+    // Hub gibi: katılana o anki sesli üye listesini gönder (bir sonraki değişikliği beklemesin).
+    const voice = voiceMembers(code);
+    this.voiceIds = new Set(voice.map((m) => m.id));
+    this.events.voiceMembersChanged(voice);
     return result;
   }
 
@@ -378,5 +428,54 @@ export class MockLobbyConnection implements LobbyConnection {
   async ping() {
     await delay(10);
     return Date.now();
+  }
+
+  /** Hub.JoinVoice: lobi yoksa hata; zaten üyeyse aynı sonuç (yine yayınlanır); 6 doluysa hata. */
+  async joinVoice(): Promise<VoiceJoinResult> {
+    await delay();
+    const lobby = this.lobby();
+    const active = activePresence(lobby.code);
+    if (!active[this.tabId]) throw new Error("HubException: Önce bir lobiye katıl");
+    const voice = (lobby.voice ?? []).filter((v) => active[v.id]);
+    if (!voice.some((v) => v.id === this.tabId)) {
+      if (voice.length >= MAX_VOICE) throw new Error("HubException: Sesli sohbet dolu");
+      lobby.voice = [...voice, { id: this.tabId, muted: false }];
+      save(lobbyKey(lobby.code), lobby);
+    }
+    // Hub gibi tekrar katılmada da yayın: listesi bayatlamış sekmeler düzelsin.
+    this.broadcast({ type: "voice", code: lobby.code, members: voiceMembers(lobby.code) });
+    return { members: voiceMembers(lobby.code), iceServers: ICE_SERVERS.map((s) => ({ urls: [...s.urls] })) };
+  }
+
+  /** Hub.LeaveVoice: üye değilse sessiz. */
+  async leaveVoice() {
+    await delay();
+    const lobby = this.code ? load<MockLobby>(lobbyKey(this.code)) : null;
+    if (!lobby?.voice?.some((v) => v.id === this.tabId)) return;
+    lobby.voice = lobby.voice.filter((v) => v.id !== this.tabId);
+    save(lobbyKey(lobby.code), lobby);
+    this.broadcast({ type: "voice", code: lobby.code, members: voiceMembers(lobby.code) });
+  }
+
+  /** Hub.SetVoiceMuted: üye değilse ya da değer değişmediyse sessiz; değiştiyse yayınlar. */
+  async setVoiceMuted(muted: boolean) {
+    await delay();
+    const lobby = this.code ? load<MockLobby>(lobbyKey(this.code)) : null;
+    const me = lobby?.voice?.find((v) => v.id === this.tabId);
+    if (!lobby || !me || me.muted === muted) return; // hub gibi: değişmediyse yayın yok
+    me.muted = muted;
+    save(lobbyKey(lobby.code), lobby);
+    this.broadcast({ type: "voice", code: lobby.code, members: voiceMembers(lobby.code) });
+  }
+
+  /** Hub.VoiceSignal: önce doğrulama; sonra iki taraf da bu lobinin sesli üyesi değilse sessizce düşer. */
+  async voiceSignal(toId: string, kind: VoiceSignalKind, payload: string) {
+    await delay(5);
+    if (!VOICE_SIGNAL_KINDS.includes(kind) || payload == null) throw new Error("HubException: Geçersiz ses sinyali");
+    if (payload.length > MAX_VOICE_SIGNAL) throw new Error("HubException: Ses sinyali çok büyük");
+    const lobby = this.code ? load<MockLobby>(lobbyKey(this.code)) : null;
+    if (!lobby || !toId || toId === this.tabId) return;
+    if (!this.voiceIds.has(this.tabId) || !this.voiceIds.has(toId)) return;
+    this.channel.postMessage({ type: "voiceSignal", code: lobby.code, to: toId, from: this.tabId, kind, payload } satisfies Message);
   }
 }

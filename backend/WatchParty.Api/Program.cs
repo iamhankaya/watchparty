@@ -3,11 +3,18 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
 using WatchParty.Api.Lobbies;
 using WatchParty.Api.Security;
+using WatchParty.Api.Uploads;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOptions<SecurityOptions>()
     .Bind(builder.Configuration.GetSection(SecurityOptions.Section))
     .ValidateDataAnnotations()
+    .ValidateOnStart();
+builder.Services.AddOptions<VoiceOptions>()
+    .Bind(builder.Configuration.GetSection(VoiceOptions.Section))
+    // Hiç ICE sunucusu ayarlanmadıysa varsayılan tek STUN.
+    .PostConfigure(o => { if (o.IceServers.Length == 0) o.IceServers = [VoiceOptions.DefaultStun]; })
+    .Validate(o => o.IsValid(), "Voice:IceServers geçersiz: her sunucuda stun:/stuns:/turn:/turns: ile başlayan en az bir adres olmalı")
     .ValidateOnStart();
 builder.Services.AddHttpRateLimits();
 builder.Services.AddSingleton<ILobbyStore, InMemoryLobbyStore>();
@@ -16,6 +23,8 @@ builder.Services.AddSingleton<ConnectionCounter>();
 builder.Services.AddSignalR(o => o.AddFilter<HubRateLimitFilter>());
 builder.Services.AddHostedService<LobbyCleanupService>();
 builder.Services.AddHostedService<LobbyTickService>();
+// Tarayıcıdan S3'e doğrudan yükleme (Upload bölümü; anahtar yoksa kapalı)
+builder.Services.AddUploads(builder.Configuration);
 var app = builder.Build();
 
 // En başta çalışır: karar, forwarded header'lar uzak adresi değiştirmeden ve rate limiter'dan önce verilir.
@@ -37,6 +46,7 @@ if (app.Services.GetRequiredService<IOptions<SecurityOptions>>().Value.TrustForw
 }
 
 app.UseRateLimiter();
+app.UseRequestSizeLimitMetadata();
 
 // test.html yalnızca geliştirme ortamında servis edilir
 if (app.Environment.IsDevelopment())
@@ -74,6 +84,8 @@ app.MapGet("/api/lobbies/{code}", (string code, ILobbyStore store) =>
 }).RequireRateLimiting(HttpRateLimits.LookupLobby);
 
 app.MapHub<LobbyHub>("/hubs/lobby");
+
+app.MapUploadEndpoints();
 
 app.Run();
 

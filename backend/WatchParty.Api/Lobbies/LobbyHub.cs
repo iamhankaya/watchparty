@@ -1,11 +1,14 @@
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Options;
 
 namespace WatchParty.Api.Lobbies;
 
-public class LobbyHub(ILobbyStore store) : Hub
+public class LobbyHub(ILobbyStore store, IOptions<VoiceOptions> voiceOptions) : Hub
 {
     private const int MaxNicknameLength = 30;
     private const int MaxChatLength = 500;
+    private const int MaxVoiceSignalLength = 16384;
+    private static readonly HashSet<string> VoiceSignalKinds = ["offer", "answer", "candidate"];
 
     public async Task<JoinResult> JoinLobby(string code, string nickname, string clientId)
     {
@@ -37,6 +40,8 @@ public class LobbyHub(ILobbyStore store) : Hub
         await Clients.Caller.SendAsync("PlaybackUpdated", lobby.Playback);
         await Clients.Caller.SendAsync("ControlModeChanged", lobby.HostOnlyControl);
         await Clients.Caller.SendAsync("ChatHistory", lobby.ChatHistory());
+        // Sesli sohbet sürüyorsa (veya yeniden bağlanınca) üye listesi bir sonraki değişikliği beklemesin.
+        await Clients.Caller.SendAsync("VoiceMembersChanged", lobby.VoiceMembers());
 
         return new JoinResult(Context.ConnectionId, IsHost(lobby));
     }
@@ -46,9 +51,13 @@ public class LobbyHub(ILobbyStore store) : Hub
         var lobby = CurrentLobby();
         if (lobby is not null)
         {
+            // Leave sesli üyeliği de siler; yayın gerekip gerekmediğini bilmek için önce ayrıca çıkarılır.
+            var leftVoice = lobby.LeaveVoice(Context.ConnectionId);
             lobby.Leave(Context.ConnectionId);
 
             await LobbyEvents.SendParticipants(Clients, lobby);
+            if (leftVoice)
+                await LobbyEvents.SendVoiceMembers(Clients, lobby);
 
             // Beklenen kişi gittiyse listeden çıkar; boşaldıysa oynatma devam eder.
             if (lobby.StopWaiting(Context.ConnectionId, DateTimeOffset.UtcNow) is { } resumed)
@@ -181,6 +190,61 @@ public class LobbyHub(ILobbyStore store) : Hub
         var message = new ChatMessage(me.Nickname, text, PlaybackState.Now());
         lobby.AddChat(message);
         await Clients.Group(lobby.Code).SendAsync("ChatMessage", message);
+    }
+
+    // Sesli sohbete katılır. Zaten üyeyse aynı sonucu döner; yayın yine yapılır ki listesi bayatlamış
+    // istemciler düzelsin.
+    public async Task<VoiceJoinResult> JoinVoice()
+    {
+        var lobby = CurrentLobby() ?? throw new HubException("Önce bir lobiye katıl");
+
+        switch (lobby.TryJoinVoice(Context.ConnectionId))
+        {
+            case VoiceJoinOutcome.NotInLobby:
+                throw new HubException("Önce bir lobiye katıl");
+            case VoiceJoinOutcome.Full:
+                throw new HubException("Sesli sohbet dolu");
+            case VoiceJoinOutcome.Joined:
+            case VoiceJoinOutcome.AlreadyMember:
+                await LobbyEvents.SendVoiceMembers(Clients, lobby);
+                break;
+        }
+
+        return new VoiceJoinResult(lobby.VoiceMembers(), voiceOptions.Value.ToViews());
+    }
+
+    // Üye değilse sessizce yok sayılır.
+    public async Task LeaveVoice()
+    {
+        var lobby = CurrentLobby();
+        if (lobby is not null && lobby.LeaveVoice(Context.ConnectionId))
+            await LobbyEvents.SendVoiceMembers(Clients, lobby);
+    }
+
+    // Üye değilse sessizce yok sayılır; değer değişmediyse yayın yapılmaz.
+    public async Task SetVoiceMuted(bool muted)
+    {
+        var lobby = CurrentLobby();
+        if (lobby is not null && lobby.SetVoiceMuted(Context.ConnectionId, muted))
+            await LobbyEvents.SendVoiceMembers(Clients, lobby);
+    }
+
+    // WebRTC sinyalini (offer/answer/ICE adayı) hedefe iletir; içeriğe bakılmaz. Gönderen ve alıcı
+    // aynı lobinin sesli sohbet üyesi değilse sessizce düşer: üyelik değişirken gelen sinyaller normaldir.
+    public async Task VoiceSignal(string toId, string kind, string payload)
+    {
+        if (kind is null || !VoiceSignalKinds.Contains(kind) || payload is null)
+            throw new HubException("Geçersiz ses sinyali");
+        if (payload.Length > MaxVoiceSignalLength)
+            throw new HubException("Ses sinyali çok büyük");
+
+        var lobby = CurrentLobby();
+        if (lobby is null || string.IsNullOrEmpty(toId) || toId == Context.ConnectionId)
+            return;
+        if (!lobby.IsVoiceMember(Context.ConnectionId) || !lobby.IsVoiceMember(toId))
+            return;
+
+        await Clients.Client(toId).SendAsync("VoiceSignal", Context.ConnectionId, kind, payload);
     }
 
     public long Ping() => PlaybackState.Now();

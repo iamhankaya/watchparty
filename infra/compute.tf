@@ -75,6 +75,25 @@ resource "aws_iam_role_policy" "deploy_read" {
   policy = data.aws_iam_policy_document.deploy_read.json
 }
 
+# Tarayıcıdan yükleme: backend multipart başlatır/tamamlar/iptal eder ve presigned PUT üretir.
+# Yalnızca videolar/ önekine yazabilir; okuma/silme yok.
+data "aws_iam_policy_document" "videos_upload" {
+  statement {
+    actions = [
+      "s3:PutObject",
+      "s3:AbortMultipartUpload",
+      "s3:ListMultipartUploadParts",
+    ]
+    resources = ["${aws_s3_bucket.videos.arn}/videolar/*"]
+  }
+}
+
+resource "aws_iam_role_policy" "videos_upload" {
+  name   = "video-bucket-yukleme"
+  role   = aws_iam_role.api.id
+  policy = data.aws_iam_policy_document.videos_upload.json
+}
+
 resource "aws_iam_instance_profile" "api" {
   name = "${var.project}-api"
   role = aws_iam_role.api.name

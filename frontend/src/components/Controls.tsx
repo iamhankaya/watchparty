@@ -20,6 +20,9 @@ interface Props {
   onToggleFullscreen(): void;
   chatOpen: boolean;
   onToggleChat(): void;
+  /** Sesli sohbetteysem mikrofonun kapalı olup olmadığı; değilsem null (tam ekranda düğme görünmez). */
+  voiceMuted: boolean | null;
+  onToggleVoiceMute(): void;
 }
 
 export function Controls(props: Props) {
@@ -104,6 +107,18 @@ export function Controls(props: Props) {
           title="Altyazı"
         >
           <Icon name="cc" />
+        </button>
+      )}
+      {/* Tam ekranda yan panel görünmez; sesli sohbetteyken mikrofon buradan açılıp kapanır. */}
+      {props.isFullscreen && props.voiceMuted !== null && (
+        <button
+          className={`icon small voice-mic${props.voiceMuted ? " is-muted" : ""}`}
+          onClick={props.onToggleVoiceMute}
+          aria-label="Mikrofonu kapat"
+          aria-pressed={props.voiceMuted}
+          title={props.voiceMuted ? "Mikrofonu aç" : "Mikrofonu kapat"}
+        >
+          <Icon name={props.voiceMuted ? "micOff" : "mic"} />
         </button>
       )}
       {props.isFullscreen && (

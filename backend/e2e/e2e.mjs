@@ -6,7 +6,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function client(name) {
   const conn = new signalR.HubConnectionBuilder().withUrl(BASE + "/hubs/lobby").configureLogging(signalR.LogLevel.None).build();
-  const ev = { participants: [], playback: [], mode: [], chat: [], history: [], host: [], typing: [] };
+  const ev = { participants: [], playback: [], mode: [], chat: [], history: [], host: [], typing: [], voiceMembers: [], voiceSignal: [] };
   conn.on("ParticipantsChanged", l => ev.participants.push(l));
   conn.on("PlaybackUpdated", s => ev.playback.push(s));
   conn.on("ControlModeChanged", m => ev.mode.push(m));
@@ -14,6 +14,8 @@ async function client(name) {
   conn.on("ChatHistory", h => ev.history.push(h));
   conn.on("HostChanged", n => ev.host.push(n));
   conn.on("UserTyping", (id, nick) => ev.typing.push({ id, nick }));
+  conn.on("VoiceMembersChanged", m => ev.voiceMembers.push(m));
+  conn.on("VoiceSignal", (fromId, kind, payload) => ev.voiceSignal.push({ fromId, kind, payload }));
   await conn.start();
   return { conn, ev, name };
 }
@@ -168,6 +170,43 @@ await bh.conn.invoke("SkipWaiting");
 await sleep(200);
 ok(bh.ev.playback.at(-1)?.waitingFor?.length === 0, "host SkipWaiting clears the wait list");
 for (const c of [bh, ba]) await c.conn.stop();
+
+// sesli sohbet (kendi lobisi)
+const { code: cv } = await (await create({ clientId: "hv" })).json();
+const va = await client("VA"), vb = await client("VB"), vc = await client("VC");
+const vaR = await va.conn.invoke("JoinLobby", cv, "VA", "hv");
+const vbR = await vb.conn.invoke("JoinLobby", cv, "VB", "gv1");
+await vc.conn.invoke("JoinLobby", cv, "VC", "gv2");
+const jr1 = await va.conn.invoke("JoinVoice");
+ok(jr1.members.length === 1 && jr1.iceServers.length >= 1 && jr1.iceServers[0].urls.length >= 1, "JoinVoice returns members and iceServers with urls");
+const jr2 = await vb.conn.invoke("JoinVoice");
+await sleep(300);
+ok(jr2.members.length === 2 && va.ev.voiceMembers.at(-1)?.length === 2 && vb.ev.voiceMembers.at(-1)?.length === 2, "both clients get VoiceMembersChanged with 2 members");
+ok(vc.ev.voiceMembers.at(-1)?.length === 2, "non-voice participant also gets VoiceMembersChanged");
+const vd = await client("VD");
+await vd.conn.invoke("JoinLobby", cv, "VD", "gv3");
+await sleep(300);
+ok(vd.ev.voiceMembers.length === 1 && vd.ev.voiceMembers[0].map(m => m.id).join() === [vaR.selfId, vbR.selfId].join(), "late joiner gets VoiceMembersChanged with existing members");
+await vd.conn.stop();
+await va.conn.invoke("VoiceSignal", vbR.selfId, "offer", "sdp-a");
+await sleep(300);
+ok(vb.ev.voiceSignal.length === 1 && vb.ev.voiceSignal[0].fromId === vaR.selfId && vb.ev.voiceSignal[0].kind === "offer" && vb.ev.voiceSignal[0].payload === "sdp-a", "VoiceSignal A->B delivered with A's id");
+await va.conn.invoke("VoiceSignal", vc.conn.connectionId, "offer", "x");
+await vc.conn.invoke("VoiceSignal", vaR.selfId, "offer", "y");
+await sleep(500);
+ok(vc.ev.voiceSignal.length === 0, "VoiceSignal A->C (not in voice) not delivered");
+ok(va.ev.voiceSignal.length === 0, "VoiceSignal C->A (C not in voice) not delivered");
+ok((await err(va.conn.invoke("VoiceSignal", vbR.selfId, "bye", "x")))?.includes("Geçersiz ses sinyali"), "invalid signal kind rejected");
+ok((await err(va.conn.invoke("VoiceSignal", vbR.selfId, "offer", "x".repeat(16385))))?.includes("çok büyük"), "oversized signal payload rejected");
+for (const c of [va, vb, vc]) await c.conn.stop();
+
+// sesli sohbet dolu (7 bağlantı)
+const { code: cvf } = await (await create({ clientId: "hvf" })).json();
+const vmany = [];
+for (let i = 0; i < 7; i++) { const c = await client("v" + i); await c.conn.invoke("JoinLobby", cvf, "v" + i, "vf" + i); vmany.push(c); }
+for (let i = 0; i < 6; i++) await vmany[i].conn.invoke("JoinVoice");
+ok((await err(vmany[6].conn.invoke("JoinVoice")))?.includes("dolu"), "7th voice member rejected (dolu)");
+for (const c of vmany) await c.conn.stop();
 
 // limit 20
 const { code: c3 } = await (await create({ clientId: "h3" })).json();

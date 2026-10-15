@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 interface Props {
+  /** Sekmelerin üstünde, her iki sekmede de görünen alan (ses şeridi). */
+  top?: ReactNode;
   chat: ReactNode;
   people: ReactNode;
   peopleCount: number;
@@ -10,7 +12,7 @@ interface Props {
 type Tab = "chat" | "people";
 
 // Sağ panel: sohbet ve kişiler aynı yüksekliği paylaşan iki sekme.
-export function SidePanel({ chat, people, peopleCount, messageCount }: Props) {
+export function SidePanel({ top, chat, people, peopleCount, messageCount }: Props) {
   const [tab, setTab] = useState<Tab>("chat");
   const [unread, setUnread] = useState(false);
   const seen = useRef(messageCount);
@@ -29,6 +31,7 @@ export function SidePanel({ chat, people, peopleCount, messageCount }: Props) {
   return (
     <aside className="cn-panel">
       <div className="cn-panel-inner">
+        {top}
         <div className="cn-tabs" role="tablist">
           <button role="tab" id="cn-tab-chat" aria-selected={tab === "chat"} aria-controls="cn-pane" onClick={() => open("chat")}>
             Sohbet
