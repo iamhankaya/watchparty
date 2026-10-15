@@ -1,5 +1,15 @@
 import * as signalR from "@microsoft/signalr";
-import type { ChatMessage, ConnectionStatus, JoinResult, MediaType, Participant, PlaybackState } from "./types";
+import type {
+  ChatMessage,
+  ConnectionStatus,
+  IceServer,
+  JoinResult,
+  MediaType,
+  Participant,
+  PlaybackState,
+  VoiceMember,
+  VoiceSignalKind,
+} from "./types";
 import { USE_MOCK } from "./api";
 import { MockLobbyConnection } from "./mock";
 import { describeConnectionError, toUserError } from "./errors";
@@ -16,6 +26,10 @@ export interface LobbyEvents {
   bufferingIgnored(nickname: string): void;
   /** Lobideki başka biri sohbete yazıyor (kendimize gelmez); id katılımcı kimliği, ad sunucudan. */
   userTyping(id: string, nickname: string): void;
+  /** Sesli sohbet üye listesi değişti (katılma sırasıyla; tüm lobiye gelir). */
+  voiceMembersChanged(members: VoiceMember[]): void;
+  /** Başka bir sesli sohbet üyesinden WebRTC sinyali (fromId = onun katılımcı kimliği). */
+  voiceSignal(fromId: string, kind: VoiceSignalKind, payload: string): void;
   /** İlk katılımda ve kopup yeniden bağlanınca (yeni selfId ile) çağrılır. */
   joined(result: JoinResult): void;
   statusChanged(status: ConnectionStatus): void;
@@ -43,6 +57,29 @@ export interface LobbyConnection {
   /** "Yazıyor" bildirimi; sunucu durum tutmaz, diğerlerine userTyping olarak iletir. */
   typing(): Promise<void>;
   ping(): Promise<number>;
+  /** Sesli sohbete katılır (idempotent); üye listesi ve ICE sunucuları döner. */
+  joinVoice(): Promise<VoiceJoinResult>;
+  /** Üye değilse sunucu sessizce yok sayar. */
+  leaveVoice(): Promise<void>;
+  setVoiceMuted(muted: boolean): Promise<void>;
+  /** Sinyal yalnızca iki taraf da aynı lobinin sesli üyesiyse iletilir; değilse sessizce düşer. */
+  voiceSignal(toId: string, kind: VoiceSignalKind, payload: string): Promise<void>;
+}
+
+export interface VoiceJoinResult {
+  members: VoiceMember[];
+  iceServers: IceServer[];
+}
+
+/** Sunucu ayarlanmamış kullanıcı adı/şifreyi null gönderir; RTCConfiguration'a "null" metni gitmesin diye atılır. */
+export function normalizeIceServers(raw: unknown): IceServer[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((s: { urls?: unknown; username?: unknown; credential?: unknown }) => {
+    const server: IceServer = { urls: Array.isArray(s?.urls) ? s.urls.filter((u): u is string => typeof u === "string") : [] };
+    if (typeof s?.username === "string") server.username = s.username;
+    if (typeof s?.credential === "string") server.credential = s.credential;
+    return server;
+  });
 }
 
 class SignalRLobbyConnection implements LobbyConnection {
@@ -64,6 +101,10 @@ class SignalRLobbyConnection implements LobbyConnection {
     this.conn.on("ChatMessage", (message: ChatMessage) => events.chatMessage(message));
     this.conn.on("BufferingIgnored", (nickname: string) => events.bufferingIgnored(nickname));
     this.conn.on("UserTyping", (id: string, nickname: string) => events.userTyping(id, nickname));
+    this.conn.on("VoiceMembersChanged", (members: VoiceMember[]) => events.voiceMembersChanged(members));
+    this.conn.on("VoiceSignal", (fromId: string, kind: VoiceSignalKind, payload: string) =>
+      events.voiceSignal(fromId, kind, payload),
+    );
 
     this.conn.onreconnecting(() => events.statusChanged("reconnecting"));
     this.conn.onreconnected(async () => {
@@ -128,6 +169,13 @@ class SignalRLobbyConnection implements LobbyConnection {
   skipWaiting = () => this.call<void>("SkipWaiting");
   typing = () => this.call<void>("Typing");
   ping = () => this.call<number>("Ping");
+  joinVoice = async (): Promise<VoiceJoinResult> => {
+    const r = await this.call<{ members: VoiceMember[]; iceServers: unknown }>("JoinVoice");
+    return { members: r.members, iceServers: normalizeIceServers(r.iceServers) };
+  };
+  leaveVoice = () => this.call<void>("LeaveVoice");
+  setVoiceMuted = (muted: boolean) => this.call<void>("SetVoiceMuted", muted);
+  voiceSignal = (toId: string, kind: VoiceSignalKind, payload: string) => this.call<void>("VoiceSignal", toId, kind, payload);
 }
 
 export function createLobbyConnection(events: LobbyEvents): LobbyConnection {

@@ -20,6 +20,7 @@ import { lockLandscape, unlockOrientation } from "../lib/orientation";
 import { SyncEngine } from "../lib/sync";
 import { genitive } from "../lib/turkish";
 import { TypingTracker } from "../lib/typing";
+import { useVoice } from "../lib/useVoice";
 import {
   expectedPosition,
   MAX_NICKNAME,
@@ -38,6 +39,7 @@ import { LobbyStrip } from "../components/LobbyStrip";
 import { SidePanel } from "../components/SidePanel";
 import { CodeBoard } from "../components/CodeBoard";
 import { WaitingBanner } from "../components/WaitingBanner";
+import { VoiceBar } from "../components/VoiceBar";
 
 interface Props {
   code: string;
@@ -91,6 +93,10 @@ export function LobbyPage({ code, navigate }: Props) {
   const typingIdsRef = useRef(new Map<string, string>());
 
   const showError = useCallback((e: unknown) => setToast({ text: errorMessage(e), kind: "error" }), []);
+  const notify = useCallback((text: string, kind: Toast["kind"]) => setToast({ text, kind }), []);
+  // Sesli sohbet; sayfadan çıkınca (aşağıdaki bağlantı kapatma etkisinden önce) LeaveVoice gönderip kaynakları kapatır.
+  const voice = useVoice({ connRef, selfId, notify });
+  const { onMembers: voiceMembersChanged, onSignal: voiceSignalReceived, onConnectionDown: voiceConnectionDown } = voice;
 
   useEffect(() => {
     if (!toast) return;
@@ -201,7 +207,15 @@ export function LobbyPage({ code, navigate }: Props) {
           setSelfId(r.selfId);
           setJoinedAsHost(r.isHost);
         },
+        voiceMembersChanged: (list) => {
+          if (connRef.current === conn) voiceMembersChanged(list);
+        },
+        voiceSignal: (fromId, kind, payload) => {
+          if (connRef.current === conn) voiceSignalReceived(fromId, kind, payload);
+        },
         statusChanged: (st) => {
+          // Sunucu kopan bağlantının sesli üyeliğini düşürür; otomatik yeniden katılmayız.
+          if ((st === "reconnecting" || st === "disconnected") && connRef.current === conn) voiceConnectionDown();
           // Kopunca kimliğimiz geçersizdir; motorun takılma sayaçları sıfırlansın (yeniden katılınca yenisi gelir).
           if (st === "reconnecting" || st === "disconnected") engine.setSelfId(null);
           // Eski bağlantının geç gelen olayları yeni bağlantının durumunu ezmesin.
@@ -238,7 +252,7 @@ export function LobbyPage({ code, navigate }: Props) {
         if (reconnect) setRetrying(false);
       }
     },
-    [code, handleIncoming, refreshTyping, forgetTyping],
+    [code, handleIncoming, refreshTyping, forgetTyping, voiceMembersChanged, voiceSignalReceived, voiceConnectionDown],
   );
 
   // 1) Lobi var mı, dolu mu?
@@ -468,6 +482,8 @@ export function LobbyPage({ code, navigate }: Props) {
           onToggleFullscreen={toggleFullscreen}
           chatOpen={chatOpen}
           onToggleChat={() => setChatOpen((o) => !o)}
+          voiceMuted={voice.phase === "joined" ? voice.muted : null}
+          onToggleVoiceMute={voice.toggleMute}
         />
       </div>
       {isFullscreen && chatOpen && chatBox}
@@ -518,10 +534,33 @@ export function LobbyPage({ code, navigate }: Props) {
         {hostOnlyNote}
       </section>
       <SidePanel
+        top={
+          <VoiceBar
+            phase={voice.phase}
+            count={voice.members.length}
+            muted={voice.muted}
+            online={status === "connected"}
+            onJoin={() => void voice.join()}
+            onLeave={voice.leave}
+            onToggleMute={voice.toggleMute}
+          />
+        }
         chat={isFullscreen ? <p className="muted small cn-pane-note">Sohbet tam ekranda açık.</p> : chatBox}
         people={
           <>
-            <Participants participants={participants} selfId={selfId} />
+            <Participants
+              participants={participants}
+              selfId={selfId}
+              voice={{
+                members: voice.members,
+                joined: voice.phase === "joined",
+                selfMuted: voice.muted,
+                speaking: voice.speaking,
+                peerStates: voice.peerStates,
+                volumes: voice.volumes,
+                onVolume: voice.setVolume,
+              }}
+            />
             {hostSettings}
           </>
         }

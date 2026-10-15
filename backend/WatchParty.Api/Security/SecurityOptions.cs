@@ -26,4 +26,7 @@ public class SecurityOptions
     [Range(1, int.MaxValue)] public int PlaybackPerSecond { get; set; } = 4;
     [Range(1, int.MaxValue)] public int OtherBurst { get; set; } = 20;
     [Range(1, int.MaxValue)] public int OtherPerSecond { get; set; } = 10;
+    // Sesli sohbet: ICE adayları bağlantı başında topluca geldiği için kova geniş.
+    [Range(1, int.MaxValue)] public int VoiceBurst { get; set; } = 60;
+    [Range(1, int.MaxValue)] public int VoicePerSecond { get; set; } = 30;
 }
