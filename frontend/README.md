@@ -98,6 +98,17 @@ src/
   İstemci (`lib/typing.ts` `TypingTracker`) aynı takma adı tek kez sayar ve bir kişiyi son bildirimden 5 sn sonra, o kişiden mesaj gelince ya da katılımcı listesinden çıkınca kaldırır.
   Metin: 1 kişi "<ad> yazıyor…", 2 kişi "<ad1> ve <ad2> yazıyor…", 3 ve üstü "<n> kişi yazıyor…".
 
+## Sesli sohbet
+
+- Ses tarayıcılar arasında doğrudan (WebRTC, herkes herkese "mesh", en fazla 6 kişi) gider; sunucu ses görmez, yalnızca `JoinVoice`/`VoiceSignal` ile tanıştırır (offer/answer/ICE adayı iletimi).
+- Katılınca `getUserMedia` (yankı engelleme, gürültü bastırma, otomatik kazanç açık) alınır, `JoinVoice` sonucundaki üye listesi ve `iceServers` ile `VoiceSession` (`lib/voice.ts`) başlar. İzin reddedilirse "Mikrofon izni verilmedi", cihaz yoksa "Mikrofon bulunamadı".
+- `VoiceSession` eş başına bir `RTCPeerConnection` açar; listeye yeni giren eş için bağlantı kurulur, çıkanınki kapanır. Çakışan teklifler "perfect negotiation" ile çözülür: `selfId < peerId` olan taraf polite'tır (çakışmada geri çekilip karşı teklifi kabul eder), diğeri (impolite) gelen teklifi çakışmada yok sayar. Bağlantı `failed` olursa bir kez `restartIce()` denenir, olmazsa kişinin yanında "Bağlanamadı" görünür.
+- Konuşma göstergesi (`lib/speaking.ts` `SpeakingDetector`): her istemci kendi mikrofonundan ve gelen akışlardan `AnalyserNode` ile RMS hesaplar (100 ms'de bir), eşik + 300 ms tutma süresiyle konuşuyor/konuşmuyor kararı verir. Sunucuya hiçbir şey gitmez.
+- Sessize alma yerel (`track.enabled = false`) ve ayrıca `SetVoiceMuted` ile yayınlanır (simge için). Kişi başı ses düzeyi yalnızca kendi ekranındadır, oturumluktur (saklanmaz) ve film sesinden ayrıdır.
+- SignalR yeniden bağlanınca sunucuda sesli sohbet üyeliği düşer; istemci otomatik yeniden katılmaz, şerit "Sesli sohbete katıl" durumuna döner ve "Bağlantı koptu; sesli sohbetten çıkıldı" bildirimi gösterilir.
+- Mock (`lib/mock.ts`) aynı kuralları uygular; sinyaller BroadcastChannel ile iletilir, aynı tarayıcıdaki sekmeler arasında gerçek WebRTC çalışır. 6 kişi sınırı `types.ts` `MAX_VOICE`, `mock.ts` ve backend `Lobby.MaxVoiceMembers`'ta eş tutulmalı.
+- **TURN eklemek** istemciyi değiştirmez: ICE sunucuları backend'den gelir, yalnızca backend'deki `Voice:IceServers` ayarına TURN girdisi (`Urls`, `Username`, `Credential`) eklenir (bkz. `deploy/README.md`). TURN olmadan bazı simetrik NAT/kurumsal ağlarda bağlantı kurulamaz ("Bağlanamadı").
+
 ## Bilinen sınırlar
 
 - Backend medya id'sini en fazla 200 karakter kabul ediyor; çok uzun (ör. imzalı) film URL'leri reddedilir.
