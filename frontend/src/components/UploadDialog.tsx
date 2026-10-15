@@ -3,6 +3,7 @@ import { errorMessage } from "../lib/errors";
 import {
   UPLOAD_KEY_STORAGE,
   subtitleFileProblem,
+  uploadKeyProblem,
   uploadSubtitle,
   uploadVideo,
   videoProblem,
@@ -101,11 +102,14 @@ export function UploadDialog({ canControl, onClose, onOpenInLobby }: Props) {
     e.preventDefault();
     const trimmedKey = key.trim();
     if (!trimmedKey) return setProblem("Yükleme anahtarını gir");
+    const keyProblem = uploadKeyProblem(trimmedKey);
+    if (keyProblem) return setProblem(keyProblem);
     if (!video) return setProblem("Bir MP4 dosyası seç");
     const p = videoProblem(video) ?? (subtitle && subtitleFileProblem(subtitle));
     if (p) return setProblem(p);
 
-    storeKey(remember ? trimmedKey : null);
+    // "Hatırla" kapalıysa eski kayıt hemen silinir; açıksa anahtar ancak sunucu kabul edince yazılır.
+    if (!remember) storeKey(null);
     setProblem(null);
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -113,6 +117,9 @@ export function UploadDialog({ canControl, onClose, onOpenInLobby }: Props) {
       setPhase({ kind: "uploading", what: "video", progress: null });
       const v = await uploadVideo(video, trimmedKey, {
         signal: ctrl.signal,
+        onStarted: () => {
+          if (remember) storeKey(trimmedKey);
+        },
         onProgress: (progress) => setPhase({ kind: "uploading", what: "video", progress }),
       });
       let subUrl: string | null = null;

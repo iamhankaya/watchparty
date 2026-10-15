@@ -15,6 +15,7 @@ public class SecurityOptions
     // IP başına dakikalık HTTP limitleri
     [Range(1, int.MaxValue)] public int CreateLobbyPerMinute { get; set; } = 10;
     [Range(1, int.MaxValue)] public int LookupLobbyPerMinute { get; set; } = 60;
+    [Range(1, int.MaxValue)] public int UploadPerMinute { get; set; } = 120;
 
     // IP başına eşzamanlı hub bağlantısı
     [Range(1, int.MaxValue)] public int MaxConnectionsPerIp { get; set; } = 20;

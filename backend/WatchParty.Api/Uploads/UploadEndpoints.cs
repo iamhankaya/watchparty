@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using WatchParty.Api.Security;
 
@@ -19,6 +20,9 @@ public static partial class UploadEndpoints
     public const string KeyHeader = "X-Upload-Key";
     public const string CacheControl = "public, max-age=31536000, immutable";
     public const int MaxPartsPerRequest = 50;
+    public const long MaxRequestBodyBytes = 64 * 1024;
+    // complete tüm parçaların ETag'ini taşır (~60 bayt/parça, en fazla 10000 parça); grup sınırını aşar.
+    public const long MaxCompleteBodyBytes = 1024 * 1024;
 
     private const string KeyNameItem = "uploadKeyName";
     private const string LogCategory = "WatchParty.Api.Uploads";
@@ -40,11 +44,16 @@ public static partial class UploadEndpoints
 
     public static IEndpointRouteBuilder MapUploadEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/uploads").AddEndpointFilter(RequireUploadKey);
+        // Gövde sınırı ve IP başına hız sınırı model bağlamadan önce uygulanır; anahtar filtresi ise bağlamadan sonra
+        // çalıştığından anahtarsız istekler gövdeyi okutmadan burada durdurulur.
+        var group = app.MapGroup("/api/uploads")
+            .WithMetadata(new RequestSizeLimitAttribute(MaxRequestBodyBytes))
+            .RequireRateLimiting(HttpRateLimits.Upload)
+            .AddEndpointFilter(RequireUploadKey);
 
         group.MapPost("/video", StartVideo);
         group.MapPost("/video/parts", PresignParts);
-        group.MapPost("/video/complete", CompleteVideo);
+        group.MapPost("/video/complete", CompleteVideo).WithMetadata(new RequestSizeLimitAttribute(MaxCompleteBodyBytes));
         group.MapPost("/video/abort", AbortVideo);
         group.MapPost("/subtitle", StartSubtitle);
         return app;

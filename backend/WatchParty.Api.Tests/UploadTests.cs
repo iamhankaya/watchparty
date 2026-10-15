@@ -240,6 +240,39 @@ public class UploadTests
     }
 
     [Fact]
+    public async Task Oversized_body_returns_413_before_key_check()
+    {
+        using var f = new UploadFactory(Settings());
+        using var c = f.CreateClient();
+        var body = new { fileName = new string('a', 100 * 1024), size = 1 };
+
+        // Anahtarsız büyük gövde: anahtar filtresine ulaşmadan 413; başarısız deneme sayılmaz, loga düşmez.
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, (await Post(c, "/api/uploads/video", body, key: "yanlis")).StatusCode);
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, (await Post(c, "/api/uploads/video", body)).StatusCode);
+        Assert.DoesNotContain(f.Logs.Lines, l => l.Contains("Geçersiz yükleme anahtarı"));
+        Assert.Empty(f.Storage.Calls);
+
+        // complete'in kendi (daha büyük) sınırı var: 5 MB parçalarla binlerce ETag 64 KB'ı aşabilir.
+        var parts = Enumerable.Range(1, 2000).Select(n => new { partNumber = n, eTag = "\"0123456789abcdef0123456789abcdef\"" }).ToArray();
+        Assert.NotEqual(HttpStatusCode.RequestEntityTooLarge, (await Post(c, "/api/uploads/video/complete", new { key = ValidKey, uploadId = "u", parts })).StatusCode);
+    }
+
+    [Fact]
+    public async Task Upload_requests_are_rate_limited_per_ip()
+    {
+        var s = Settings();
+        s["Security:UploadPerMinute"] = "120";
+        using var f = new UploadFactory(s);
+        using var c = f.CreateClient();
+
+        for (var i = 0; i < 120; i++)
+            Assert.Equal(HttpStatusCode.OK, (await Post(c, "/api/uploads/video", new { fileName = "a.mp4", size = 1 })).StatusCode);
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await Post(c, "/api/uploads/video", new { fileName = "a.mp4", size = 1 })).StatusCode);
+        Assert.Equal(120, f.Storage.Calls.Count);
+    }
+
+    [Fact]
     public async Task Empty_keys_returns_403_upload_closed()
     {
         using var f = new UploadFactory(Settings(withKeys: false));

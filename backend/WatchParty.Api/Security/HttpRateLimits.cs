@@ -7,6 +7,7 @@ public static class HttpRateLimits
 {
     public const string CreateLobby = "create-lobby";
     public const string LookupLobby = "lookup-lobby";
+    public const string Upload = "upload";
 
     public static IServiceCollection AddHttpRateLimits(this IServiceCollection services)
     {
@@ -15,6 +16,7 @@ public static class HttpRateLimits
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
             options.AddPolicy(CreateLobby, context => Partition(context, o => o.CreateLobbyPerMinute));
             options.AddPolicy(LookupLobby, context => Partition(context, o => o.LookupLobbyPerMinute));
+            options.AddPolicy(Upload, context => Partition(context, o => o.UploadPerMinute));
         });
         return services;
     }

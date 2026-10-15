@@ -18,6 +18,7 @@ public class SecurityOptionsTests
     [InlineData("Security:ChatBurst")]
     [InlineData("Security:OtherPerSecond")]
     [InlineData("Security:CreateLobbyPerMinute")]
+    [InlineData("Security:UploadPerMinute")]
     [InlineData("Security:MaxConnectionsPerIp")]
     public void Zero_limit_stops_startup(string key)
     {

@@ -98,6 +98,7 @@ Anahtarı olan kişiler lobideki "Bilgisayardan yükle" düğmesiyle MP4 (+ iste
 - **Sınırlar:** video en fazla 6 GB, `.mp4`/`.m4v`; altyazı en fazla 2 MB, `.srt`/`.vtt`.
 - **Konum:** `videolar/<32 hex gizli klasör>/<temizlenmiş ad>` (video bucket'ı); link `https://<cloudfront>/videolar/...`. Yaşam döngüsü aynen geçerli: 30 gün sonra silinir, yarım yüklemeler 2 günde iptal edilir. Elle silmek için yukarıdaki "Videolar" notuna bakın.
 - **Yanlış anahtar:** IP başına 10 dakikada en fazla 10 başarısız deneme; sonrası 429.
+- **Genel sınırlar:** `/api/uploads/*` istek gövdesi en fazla 64 KB (aşan 413), IP başına dakikada en fazla `Security:UploadPerMinute` istek (varsayılan 120; aşan 429). İkisi de anahtar kontrolünden önce uygulanır.
 - **Anahtarlar:** her kişiye ayrı, rastgele 32 karakterlik anahtar. Sunucuda yalnızca ad + **SHA-256 özeti** durur (`/etc/watchparty/watchparty.env`, `Upload__Keys__<i>__Name/Sha256`); açık anahtar repoya, loga ya da konsola yazılmaz.
 
 ### İlk kurulum
@@ -126,6 +127,9 @@ Ortak seçenekler: `-Profile <ad>`, `-Force` (onay sorusunu atlar).
 - `-Add` anahtarı **ekrana yazmaz**: panoya kopyalar ve yalnızca "Anahtar panoya kopyalandı" der. Kişiye özel bir kanaldan (birebir mesaj) iletin; başka bir şey kopyalamadan önce gönderin, kaybolursa `-Remove` + `-Add` ile yenisini üretin. Özet SSM ile sunucudaki ortam dosyasına yazılır.
 - **Uyarı: her anahtar işlemi (`-Init`, `-Add`, `-Remove`) servisi yeniden başlatır ve açık lobileri düşürür.** Script önce uyarır ve onay ister; insanlar izlerken çalıştırmayın.
 - Anahtarı kişiye ilettikten sonra panoyu ve Windows pano geçmişini temizleyin (Win+V → "Tümünü temizle"; ya da `Set-Clipboard -Value " "`).
+- `-Add`, `-Init`'ten önce çalıştırılırsa "Önce -Init çalıştırın" hatası verir; hiçbir şey yazılmaz.
+- **upload-keys.ps1'i aynı anda iki kez çalıştırmayın** (iki terminal ya da iki kişi): her çalıştırma sunucudaki satırları okuyup tamamını yeniden yazar, sonra yazan öncekinin değişikliğini siler.
+- SSM sonucu beklenirken zaman aşımı olursa uzak yazma yine de gerçekleşmiş olabilir: durumu `-List` ile kontrol edin; yarım kalmış bir anahtar görürseniz `-Remove` ile silin.
 - `-List` yeniden başlatmaz ve onay sormaz. `-Init` ayarlar zaten günceldeyse "zaten güncel" der ve yeniden başlatmaz.
 - Yanlış anahtar sınırına takılan IP, doğru anahtarı girse bile 10 dakikalık pencere bitene kadar 429 alır.
 - Güvenlik ağı: yazımdan sonra sağlık kontrolü başarısız olursa script önceki ortam dosyasını (`.bak`) geri yükler ve servisi yeniden başlatır.

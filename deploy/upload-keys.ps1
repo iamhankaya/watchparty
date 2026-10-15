@@ -168,7 +168,10 @@ function Invoke-RemoteShell([string]$InstanceId, [string[]]$Commands, [string]$C
         if ($inv -and $inv.Status -notin @("Pending", "InProgress", "Delayed")) { break }
         Start-Sleep -Seconds 2
     }
-    if (-not $inv) { throw "SSM komutunun sonucu alınamadı ($commandId)" }
+    # Zaman aşımı: komut sunucuda hâlâ çalışıyor ya da bitmiş olabilir; yazma işlemi gerçekleşmiş sayılmalı.
+    if (-not $inv -or $inv.Status -in @("Pending", "InProgress", "Delayed")) {
+        throw "SSM komutunun sonucu beklenirken zaman aşımı ($commandId); uzak işlem yine de tamamlanmış olabilir. Durumu -List ile kontrol edin; gerekirse -Remove"
+    }
     return $inv
 }
 
@@ -181,10 +184,11 @@ function Read-RemoteUploadLines([string]$InstanceId) {
     return [string]$inv.StandardOutputContent
 }
 
-# Sunucudaki ortam dosyasında Upload__ satırlarını verilen içerikle değiştirir (diğer satırlar korunur),
+# Sunucuda çalışacak yazma script'i (LF): Upload__ satırlarını verilen içerikle değiştirir (diğer satırlar korunur),
 # önceki dosyayı .bak olarak saklar, servisi yeniden başlatır ve sağlık kontrolü yapar.
 # Sağlık kontrolü başarısızsa .bak geri yüklenir ve servis yeniden başlatılır.
-function Write-RemoteUploadLines([string]$InstanceId, [string]$UploadLines) {
+# grep -v hiç satır kalmayınca 1 döner (normal); 2 (okuma/G-Ç hatası) set -e ile dosya değiştirilmeden durdurur.
+function Get-RemoteWriteScript([string]$UploadLines) {
     $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($UploadLines))
     $f = $script:EnvFile
     $remote = @"
@@ -192,7 +196,7 @@ set -eu
 F=$f
 umask 077
 cp -p "`$F" "`$F.bak"
-grep -v '^Upload__' "`$F" > "`$F.new" || true
+grep -v '^Upload__' "`$F" > "`$F.new" || [ `$? -eq 1 ]
 echo '$b64' | base64 -d >> "`$F.new"
 chown root:root "`$F.new"
 chmod 600 "`$F.new"
@@ -210,7 +214,11 @@ cp -p "`$F.bak" "`$F"
 systemctl restart watchparty
 exit 1
 "@
-    $inv = Invoke-RemoteShell $InstanceId @(($remote -replace "`r", "")) "WatchParty yükleme anahtarları: yazma"
+    return ($remote -replace "`r", "")
+}
+
+function Write-RemoteUploadLines([string]$InstanceId, [string]$UploadLines) {
+    $inv = Invoke-RemoteShell $InstanceId @(Get-RemoteWriteScript $UploadLines) "WatchParty yükleme anahtarları: yazma"
     if ($inv.StandardOutputContent) { Write-Host $inv.StandardOutputContent.TrimEnd() }
     if ($inv.Status -ne "Success") {
         throw "Ortam dosyası güncellenemedi (durum: $($inv.Status)): $($inv.StandardErrorContent)"
@@ -269,6 +277,9 @@ function Invoke-UploadKeys {
         Write-Host "Anahtar silindi ($Remove)."
         return
     }
+
+    # -Add, -Init'ten önce çalıştırılırsa sunucu anahtarı kabul eder ama yükleme ayarları eksik kalır.
+    if ($current -cnotmatch '(?m)^Upload__VideoBucket=') { throw "Önce -Init çalıştırın" }
 
     # -Add: açık anahtar yalnızca bu fonksiyonun yerel değişkeninde ve panoda durur.
     $key = New-UploadKey

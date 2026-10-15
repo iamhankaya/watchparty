@@ -30,6 +30,8 @@ export interface UploadProgress {
 export interface UploadOptions {
   onProgress(p: UploadProgress): void;
   signal?: AbortSignal;
+  /** Sunucu başlatma isteğini kabul edince (anahtar doğrulandı) bir kez çağrılır. */
+  onStarted?(): void;
   fetchImpl?: typeof fetch;
   /** Testler için: yeniden deneme beklemesi ve saat. */
   sleep?: (ms: number) => Promise<void>;
@@ -55,6 +57,11 @@ const extension = (name: string) => {
   const i = name.lastIndexOf(".");
   return i >= 0 ? name.slice(i + 1).toLowerCase() : "";
 };
+
+// upload-keys.ps1'in ürettiği biçim (32 karakter base62); biçimsiz anahtar sunucuya hiç gönderilmez.
+export function uploadKeyProblem(key: string): string | null {
+  return /^[A-Za-z0-9]{32}$/.test(key) ? null : "Yükleme anahtarı geçersiz";
+}
 
 // Sunucudaki doğrulamayla aynı metinler.
 export function videoProblem(file: File): string | null {
@@ -182,6 +189,7 @@ export async function uploadVideo(file: File, uploadKey: string, opts: UploadOpt
     opts.signal?.removeEventListener("abort", onUserAbort);
     throw e;
   }
+  opts.onStarted?.();
   const { key, uploadId } = start;
   const parts = planParts(file.size, start.partSize);
 

@@ -40,6 +40,7 @@ if (app.Services.GetRequiredService<IOptions<SecurityOptions>>().Value.TrustForw
 }
 
 app.UseRateLimiter();
+app.UseRequestSizeLimitMetadata();
 
 // test.html yalnızca geliştirme ortamında servis edilir
 if (app.Environment.IsDevelopment())

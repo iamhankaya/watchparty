@@ -65,6 +65,8 @@ jobs:
         run: bash deploy/tests/remote-deploy.test.sh
       - name: Ortak PowerShell fonksiyon testleri
         run: pwsh -NoProfile -File deploy/tests/common.test.ps1
+      - name: Yükleme anahtarı script testleri
+        run: pwsh -NoProfile -File deploy/tests/upload-keys.test.ps1
 
   downloader:
     runs-on: ubuntu-latest

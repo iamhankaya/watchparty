@@ -3,6 +3,7 @@ import {
   MAX_SUBTITLE_BYTES,
   MAX_VIDEO_BYTES,
   planParts,
+  uploadKeyProblem,
   uploadSubtitle,
   uploadVideo,
   videoProblem,
@@ -298,6 +299,19 @@ describe("uploadVideo", () => {
     );
   });
 
+  test("onStarted yalnızca başlatma isteği başarılıysa çağrılır", async () => {
+    let started = 0;
+    const bad = fakeServer({ size: PART, startStatus: 401, startBody: { error: "Yükleme anahtarı geçersiz" } });
+    await expect(
+      uploadVideo(fakeFile("film.mp4", PART), "k", { onProgress, fetchImpl: bad.fetchImpl, onStarted: () => started++ }),
+    ).rejects.toThrow();
+    expect(started).toBe(0);
+
+    const ok = fakeServer({ size: PART });
+    await uploadVideo(fakeFile("film.mp4", PART), "k", { onProgress, fetchImpl: ok.fetchImpl, sleep: noSleep, onStarted: () => started++ });
+    expect(started).toBe(1);
+  });
+
   test("JSON olmayan hata gövdesinde durum koduna düşer", async () => {
     const fetchImpl = (async () => new Response("", { status: 429, statusText: "Too Many Requests" })) as typeof fetch;
     await expect(uploadVideo(fakeFile("film.mp4", PART), "k", { onProgress, fetchImpl })).rejects.toThrow(/429/);
@@ -355,6 +369,14 @@ describe("uploadVideo", () => {
     const seven = seen.find((p) => p.loaded === 7 * PART)!;
     // Ortalama (7 parça / 43 sn) değil, son pencere: ~1 parça/sn
     expect(seven.bytesPerSecond).toBeGreaterThan(0.7 * PART);
+  });
+});
+
+describe("uploadKeyProblem", () => {
+  test("32 karakter base62 kabul edilir, diğerleri reddedilir", () => {
+    expect(uploadKeyProblem("Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4z")).toBeNull();
+    for (const k of ["", "kisa", "Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4z0", "Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4-", "Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4ç"])
+      expect(uploadKeyProblem(k)).toBe("Yükleme anahtarı geçersiz");
   });
 });
 

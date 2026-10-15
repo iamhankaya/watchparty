@@ -1,5 +1,6 @@
 ﻿# upload-keys.ps1 birim testleri (Pester yok). Çalıştırma:
-#   powershell -NoProfile -File deploy/tests/upload-keys.test.ps1
+#   powershell -NoProfile -File deploy/tests/upload-keys.test.ps1   (Windows)
+#   pwsh -NoProfile -File deploy/tests/upload-keys.test.ps1         (CI; Set-Clipboard aşağıda sahte)
 # Gerçek aws/SSM çağrılmaz: uzak okuma/yazma, infra çıktıları ve pano sahte fonksiyonlarla değiştirilir.
 $ErrorActionPreference = "Stop"
 . (Join-Path (Split-Path -Parent $PSScriptRoot) "upload-keys.ps1")
@@ -124,7 +125,7 @@ Run-Test "sha256_kucuk_hex" {
 }
 
 Run-Test "add_anahtari_yazdirmaz_panoya_kopyalar" {
-    $script:remote = "Upload__Keys__0__Name=eski`nUpload__Keys__0__Sha256=$h1`n"
+    $script:remote = "Upload__VideoBucket=vb`nUpload__Keys__0__Name=eski`nUpload__Keys__0__Sha256=$h1`n"
     $out = & { Invoke-UploadKeys -Add "yeni" -Force } *>&1 | Out-String
     $key = $script:clipboard
     Assert ($key -and $key.Length -eq 32) "panoya anahtar kopyalanmadı"
@@ -137,11 +138,28 @@ Run-Test "add_anahtari_yazdirmaz_panoya_kopyalar" {
 }
 
 Run-Test "add_ayni_ad_yazmaz_kopyalamaz" {
-    $script:remote = "Upload__Keys__0__Name=ali`nUpload__Keys__0__Sha256=$h1`n"
+    $script:remote = "Upload__VideoBucket=vb`nUpload__Keys__0__Name=ali`nUpload__Keys__0__Sha256=$h1`n"
     $m = Get-ErrorOf { Invoke-UploadKeys -Add "ali" -Force *>&1 | Out-Null }
     Assert ($m -like "*zaten var*") "hata yok: $m"
     Assert ($script:written.Count -eq 0) "sunucuya yazıldı"
     Assert ($null -eq $script:clipboard) "panoya kopyalandı"
+}
+
+Run-Test "add_init_oncesi_hata_sormaz_yazmaz" {
+    $script:remote = "Upload__Keys__0__Name=ali`nUpload__Keys__0__Sha256=$h1`n"
+    # Force verilmeden: onay sorulursa sahte Read-Host farklı bir hata fırlatır.
+    $m = Get-ErrorOf { Invoke-UploadKeys -Add "veli" *>&1 | Out-Null }
+    Assert ($m -like "*Önce -Init çalıştırın*") "hata yok: $m"
+    Assert ($script:written.Count -eq 0) "sunucuya yazıldı"
+    Assert ($null -eq $script:clipboard) "panoya kopyalandı"
+}
+
+Run-Test "uzak_yazma_grep_hatasi_maskelenmez" {
+    $r = Get-RemoteWriteScript "Upload__VideoBucket=vb`n"
+    Assert (-not $r.Contains("`r")) "CR var"
+    Assert ($r.StartsWith("set -eu`n")) "set -eu yok"
+    Assert ($r.Contains("grep -v '^Upload__' `"`$F`" > `"`$F.new`" || [ `$? -eq 1 ]`n")) "grep satırı yanlış: $r"
+    Assert (-not $r.Contains("|| true")) "|| true hâlâ var"
 }
 
 Run-Test "list_yalnizca_adlar" {
