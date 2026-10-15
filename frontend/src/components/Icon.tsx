@@ -74,6 +74,35 @@ const PATHS = {
     </>
   ),
   crown: <path d="M4 17.5h16M4.5 15l-1-8.5 5 4L12 5l3.5 5.5 5-4-1 8.5z" />,
+  mic: (
+    <>
+      <rect x="9" y="3" width="6" height="11.5" rx="3" />
+      <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3" />
+    </>
+  ),
+  micOff: (
+    <>
+      <rect x="9" y="3" width="6" height="11.5" rx="3" />
+      <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3" />
+      <path d="M4 4l16 16" />
+    </>
+  ),
+  headphones: (
+    <>
+      <path d="M4 17v-4a8 8 0 0 1 16 0v4" />
+      <rect x="3.5" y="13.5" width="4" height="6.5" rx="1.5" />
+      <rect x="16.5" y="13.5" width="4" height="6.5" rx="1.5" />
+    </>
+  ),
+  phoneOff: (
+    <path d="M3.5 14.5c4.8-4.4 12.2-4.4 17 0l-2.2 2.6-3.4-1.4v-2.6a10 10 0 0 0-5.8 0v2.6l-3.4 1.4z" />
+  ),
+  alert: (
+    <>
+      <path d="M12 4l9 15.5H3z" />
+      <path d="M12 10v4M12 17v.01" />
+    </>
+  ),
 };
 
 export type IconName = keyof typeof PATHS;
