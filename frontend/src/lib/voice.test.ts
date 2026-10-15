@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { IceServer, VoiceMember } from "./types";
-import { VoiceSession, type VoiceCallbacks } from "./voice";
+import { VOICE_WATCHDOG_MS, VOICE_WATCHDOG_POLITE_EXTRA_MS, VoiceSession, type VoiceCallbacks } from "./voice";
 
 /** Elle yönetilen sahte RTCPeerConnection: olayları testler tetikler, çağrılar kaydedilir. */
 class FakePeer {
@@ -459,6 +459,7 @@ describe("VoiceSession bağlantı durumu", () => {
   });
 
   test("failed → bir kez restartIce, ikinci failed → onPeerState(failed)", () => {
+    setup("d"); // "d" > "c" → impolite: yeniden başlatan taraf
     session.setMembers([member("c")]);
     peers[0].setState("failed");
     expect(peers[0].restartIce).toHaveBeenCalledTimes(1);
@@ -470,6 +471,7 @@ describe("VoiceSession bağlantı durumu", () => {
   });
 
   test("connected olunca restartIce hakkı yenilenir", () => {
+    setup("d"); // impolite
     session.setMembers([member("c")]);
     peers[0].setState("failed");
     peers[0].setState("connected");
@@ -478,6 +480,17 @@ describe("VoiceSession bağlantı durumu", () => {
     expect(cb.onPeerState).not.toHaveBeenCalledWith("c", "failed");
     peers[0].setState("failed");
     expect(peers[0].restartIce).toHaveBeenCalledTimes(2);
+    expect(cb.onPeerState).toHaveBeenCalledWith("c", "failed");
+  });
+
+  test("polite taraf failed'da restartIce yapmaz (çakışma olmasın), ikinci failed'da bildirir", () => {
+    session.setMembers([member("c")]); // "b" < "c" → polite
+    peers[0].setState("failed");
+    expect(peers[0].restartIce).not.toHaveBeenCalled();
+    expect(cb.onPeerState).not.toHaveBeenCalledWith("c", "failed");
+    peers[0].setState("connecting"); // impolite tarafın yeni offer'ı geldi
+    peers[0].setState("failed");
+    expect(peers[0].restartIce).not.toHaveBeenCalled();
     expect(cb.onPeerState).toHaveBeenCalledWith("c", "failed");
   });
 
@@ -519,5 +532,216 @@ describe("VoiceSession sessize alma ve durdurma", () => {
     session.stop();
     session.start(stream, ICE, "b");
     expect(peers).toHaveLength(1);
+  });
+});
+
+describe("VoiceSession bekçi (sessiz başarısızlık yok)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "queueMicrotask"] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const tick = (ms: number) => vi.advanceTimersByTimeAsync(ms);
+  // Sahte saat, bir zamanlayıcı içinde kurulan 0 ms'lik zamanlayıcıyı 1 ms sonraya koyar.
+  const settle = async () => {
+    for (let i = 0; i < 10; i++) await tick(1);
+  };
+  const failedCalls = () => cb.onPeerState.mock.calls.filter((c) => c[1] === "failed");
+
+  test("impolite: teklif yanıtsız kalırsa süre dolunca aynı offer yeniden gönderilir", async () => {
+    setup("d"); // impolite
+    session.setMembers([member("c")]);
+    await tick(0); // addTrack → negotiationneeded → offer
+    expect(sentOf("offer")).toHaveLength(1);
+    expect(peers[0].signalingState).toBe("have-local-offer");
+
+    await tick(VOICE_WATCHDOG_MS - 1);
+    expect(sentOf("offer")).toHaveLength(1);
+    await tick(1);
+    const offers = sentOf("offer");
+    expect(offers).toHaveLength(2);
+    expect(offers[1][0]).toBe("c");
+    expect(JSON.parse(offers[1][2])).toEqual({ type: "offer", sdp: "yerel-offer" });
+    expect(failedCalls()).toHaveLength(0);
+  });
+
+  test("impolite: ikinci süre de dolarsa onPeerState(failed)", async () => {
+    setup("d");
+    session.setMembers([member("c")]);
+    await tick(VOICE_WATCHDOG_MS);
+    expect(failedCalls()).toHaveLength(0);
+    await tick(VOICE_WATCHDOG_MS);
+    expect(failedCalls()).toEqual([["c", "failed"]]);
+  });
+
+  test("impolite: müzakere bitti ama bağlantı kurulmadıysa restartIce", async () => {
+    setup("d");
+    session.setMembers([member("c")]);
+    await tick(0);
+    await session.handleSignal("c", "answer", JSON.stringify({ type: "answer", sdp: "uzak" }));
+    expect(peers[0].signalingState).toBe("stable");
+    await tick(VOICE_WATCHDOG_MS);
+    expect(peers[0].restartIce).toHaveBeenCalledTimes(1);
+    expect(sentOf("offer")).toHaveLength(1); // yeniden gönderme değil, ICE yenileme
+  });
+
+  test("polite: hiç offer gelmezse (uzatılmış) süre dolunca izleri ekleyip kendisi teklif eder", async () => {
+    setup("b");
+    session.setMembers([member("c")]); // polite
+    await tick(VOICE_WATCHDOG_MS);
+    expect(peers[0].addTrack).not.toHaveBeenCalled(); // impolite tarafa yeniden gönderme fırsatı
+    await tick(VOICE_WATCHDOG_POLITE_EXTRA_MS);
+    expect(peers[0].addTrack).toHaveBeenCalledTimes(1);
+    await tick(0);
+    expect(sentOf("offer")).toHaveLength(1);
+    expect(sentOf("offer")[0][0]).toBe("c");
+
+    // Answer gelir, iki taraf stable; bağlantı yine de kurulmazsa ikinci sürede failed.
+    await session.handleSignal("c", "answer", JSON.stringify({ type: "answer", sdp: "uzak" }));
+    expect(peers[0].signalingState).toBe("stable");
+    await tick(VOICE_WATCHDOG_MS);
+    expect(failedCalls()).toEqual([["c", "failed"]]);
+  });
+
+  test("polite: offer almışsa süre dolunca teklif etmez, ikinci sürede failed", async () => {
+    setup("b");
+    session.setMembers([member("c")]);
+    await session.handleSignal("c", "offer", JSON.stringify({ type: "offer", sdp: "uzak" }));
+    await tick(0);
+    await tick(VOICE_WATCHDOG_MS + VOICE_WATCHDOG_POLITE_EXTRA_MS);
+    expect(sentOf("offer")).toHaveLength(0);
+    expect(peers[0].restartIce).not.toHaveBeenCalled();
+    expect(failedCalls()).toHaveLength(0);
+    await tick(VOICE_WATCHDOG_MS);
+    expect(failedCalls()).toEqual([["c", "failed"]]);
+  });
+
+  test("polite'ın kendi teklifi impolite'ın yeniden gönderdiği teklifle çakışırsa perfect negotiation çözer", async () => {
+    const sent: string[] = [];
+    const make = (selfId: string, list: FakePeer[], other: () => VoiceSession) =>
+      new VoiceSession(
+        {
+          createPeer: (config) => {
+            const p = new FakePeer(config);
+            list.push(p);
+            return p as unknown as RTCPeerConnection;
+          },
+        },
+        {
+          sendSignal: (_to, kind, payload) => {
+            sent.push(`${selfId}:${kind}`);
+            setTimeout(() => void other().handleSignal(selfId, kind, payload), 0);
+          },
+          onRemoteStream: () => {},
+          onPeerState: () => {},
+          onPeerClosed: () => {},
+        },
+      );
+    const peersA: FakePeer[] = [];
+    const peersB: FakePeer[] = [];
+    const a: VoiceSession = make("a", peersA, () => b); // polite
+    const b: VoiceSession = make("b", peersB, () => a); // impolite
+    a.start(fakeStream(), ICE, "a");
+    b.start(fakeStream(), ICE, "b");
+    // Impolite taraf polite'ı henüz üye olarak görmüyor (ör. bağlantıyı kapatıp yeniden açtı).
+    a.setMembers([member("a"), member("b")]);
+    b.setMembers([member("b")]);
+    await tick(VOICE_WATCHDOG_MS + VOICE_WATCHDOG_POLITE_EXTRA_MS); // polite kendisi teklif eder
+    await settle();
+    // Impolite bilinmeyen eşten gelen offer'ı kabul eder (sahte eşte ardından zararsız bir yeniden müzakere olabilir).
+    expect(sent.slice(0, 2)).toEqual(["a:offer", "b:answer"]);
+    expect(peersA[0].signalingState).toBe("stable");
+    expect(peersB[0].signalingState).toBe("stable");
+
+    // Sonra iki taraf aynı anda yeniden müzakere ister: polite rollback ile kabul eder.
+    sent.length = 0;
+    peersA[0].onnegotiationneeded?.();
+    peersB[0].onnegotiationneeded?.();
+    await settle();
+    expect(sent).toContain("a:answer");
+    expect(sent).not.toContain("b:answer");
+    expect(peersA[0].signalingState).toBe("stable");
+    expect(peersB[0].signalingState).toBe("stable");
+    a.stop();
+    b.stop();
+  });
+
+  test("kaybolan ilk offer: impolite yeniden gönderir, polite yanıtlar, polite ayrıca teklif etmez", async () => {
+    const sent: string[] = [];
+    let dropFirstOffer = true;
+    const make = (selfId: string, list: FakePeer[], other: () => VoiceSession) =>
+      new VoiceSession(
+        {
+          createPeer: (config) => {
+            const p = new FakePeer(config);
+            list.push(p);
+            return p as unknown as RTCPeerConnection;
+          },
+        },
+        {
+          sendSignal: (_to, kind, payload) => {
+            sent.push(`${selfId}:${kind}`);
+            if (kind === "offer" && dropFirstOffer) {
+              dropFirstOffer = false; // ilk offer kaybolur
+              return;
+            }
+            setTimeout(() => void other().handleSignal(selfId, kind, payload), 0);
+          },
+          onRemoteStream: () => {},
+          onPeerState: () => {},
+          onPeerClosed: () => {},
+        },
+      );
+    const peersA: FakePeer[] = [];
+    const peersB: FakePeer[] = [];
+    const a: VoiceSession = make("a", peersA, () => b); // polite
+    const b: VoiceSession = make("b", peersB, () => a); // impolite
+    a.start(fakeStream(), ICE, "a");
+    b.start(fakeStream(), ICE, "b");
+    a.setMembers([member("a"), member("b")]);
+    b.setMembers([member("a"), member("b")]);
+    await tick(0);
+    expect(sent).toEqual(["b:offer"]); // kayboldu
+    expect(peersB[0].signalingState).toBe("have-local-offer");
+
+    await tick(VOICE_WATCHDOG_MS); // impolite yeniden gönderir, polite yanıtlar
+    await settle();
+    expect(sent).toEqual(["b:offer", "b:offer", "a:answer"]);
+    expect(peersA[0].signalingState).toBe("stable");
+    expect(peersB[0].signalingState).toBe("stable");
+    expect(peersA[0].addTrack).toHaveBeenCalledTimes(1);
+
+    // Polite'ın uzatılmış süresi dolduğunda izleri zaten vardır: ek teklif yapmaz.
+    await tick(VOICE_WATCHDOG_POLITE_EXTRA_MS);
+    expect(sent.filter((x) => x === "a:offer")).toHaveLength(0);
+    a.stop();
+    b.stop();
+  });
+
+  test("connected olunca bekçi durur; kopunca yeniden kurulur", async () => {
+    setup("d");
+    session.setMembers([member("c")]);
+    await tick(0);
+    peers[0].setState("connected");
+    await tick(VOICE_WATCHDOG_MS * 3);
+    expect(sentOf("offer")).toHaveLength(1);
+    expect(failedCalls()).toHaveLength(0);
+
+    peers[0].setState("disconnected");
+    await tick(VOICE_WATCHDOG_MS * 2);
+    expect(failedCalls()).toEqual([["c", "failed"]]);
+  });
+
+  test("stop ve eşin kapanması bekçiyi temizler", async () => {
+    setup("d");
+    session.setMembers([member("c"), member("e")]);
+    await tick(0);
+    session.setMembers([member("e")]); // c kapanır
+    session.stop();
+    expect(vi.getTimerCount()).toBe(0);
+    await tick(VOICE_WATCHDOG_MS * 3);
+    expect(failedCalls()).toHaveLength(0);
   });
 });

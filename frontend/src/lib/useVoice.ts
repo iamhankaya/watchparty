@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
-import type { LobbyConnection } from "./connection";
+import type { LobbyConnection, VoiceJoinResult } from "./connection";
 import { errorMessage } from "./errors";
 import { SpeakingDetector } from "./speaking";
 import type { VoiceMember, VoiceSignalKind } from "./types";
@@ -29,6 +29,39 @@ export const MIC_CONSTRAINTS: MediaStreamConstraints = {
   audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
 };
 
+/**
+ * JoinVoice'u, oturumu önceden sinyal hedefi yaparak çağırır. Karşı tarafın ilk offer'ı JoinVoice
+ * sonucundan önce gelebilir (ör. aynı SignalR paketinde, long polling'de sık); oturum start()'tan
+ * önce gelen sinyalleri tamponlayıp start'ta işler, böylece düşmez. Katılma başarısızsa ya da bu
+ * arada bayatladıysa (isCurrent false) oturum durdurulur, tamponu atılır ve hedef temizlenir;
+ * bayatlamada sunucudaki üyelik de geri alınır. Başarıda hedef oturumda kalır (start çağıranın işi).
+ */
+export async function joinVoiceBuffered(
+  conn: Pick<LobbyConnection, "joinVoice" | "leaveVoice">,
+  session: Pick<VoiceSession, "stop">,
+  target: { current: unknown },
+  isCurrent: () => boolean,
+): Promise<VoiceJoinResult | null> {
+  target.current = session;
+  const release = () => {
+    if (target.current === session) target.current = null;
+    session.stop();
+  };
+  let result: VoiceJoinResult;
+  try {
+    result = await conn.joinVoice();
+  } catch (e) {
+    release();
+    throw e;
+  }
+  if (!isCurrent()) {
+    release();
+    conn.leaveVoice().catch(() => {});
+    return null;
+  }
+  return result;
+}
+
 interface Options {
   connRef: RefObject<LobbyConnection | null>;
   selfId: string | null;
@@ -57,6 +90,8 @@ export function useVoice({ connRef, selfId, notify }: Options) {
   const [volumes, setVolumes] = useState<Record<string, number>>({});
 
   const activeRef = useRef<Active | null>(null);
+  // Gelen sinyallerin hedefi: katılma sürerken (JoinVoice beklenirken) de dolu, sinyaller tamponlanır.
+  const sessionRef = useRef<VoiceSession | null>(null);
   // Her katılma/ayrılma bir kuşak; bekleyen katılma işi eski kuşaktaysa kaynaklarını bırakır.
   const genRef = useRef(0);
   const selfIdRef = useRef(selfId);
@@ -75,6 +110,8 @@ export function useVoice({ connRef, selfId, notify }: Options) {
     genRef.current++;
     const a = activeRef.current;
     activeRef.current = null;
+    sessionRef.current?.stop(); // katılma sürerken oluşturulmuş oturum ve tamponu
+    sessionRef.current = null;
     if (a) {
       a.session.stop(); // her eş için onPeerClosed → <audio> kaldırılır
       for (const t of a.stream.getTracks()) t.stop(); // mikrofonun sahibi biziz
@@ -94,8 +131,10 @@ export function useVoice({ connRef, selfId, notify }: Options) {
     const gen = ++genRef.current;
     phaseRef.current = "joining"; // render beklemeden: çift tıklama ikinci kez katılmasın
     setPhase("joining");
-    // Algılayıcı tıklama anında oluşur; AudioContext ilk watch'ta açılır (sayfada kullanıcı etkileşimi olmuş olur).
+    // Algılayıcının AudioContext'i tıklama anında, ilk await'ten önce açılır: iOS Safari gibi
+    // tarayıcılar yalnızca kullanıcı etkileşimi sırasında açılan/sürdürülen sesi çalıştırır.
     const detector = new SpeakingDetector();
+    detector.prime();
 
     let stream: MediaStream;
     try {
@@ -116,30 +155,6 @@ export function useVoice({ connRef, selfId, notify }: Options) {
     if (gen !== genRef.current || !conn || !me) {
       stopStream();
       detector.stop();
-      if (gen === genRef.current) {
-        phaseRef.current = "idle";
-        setPhase("idle");
-      }
-      return;
-    }
-
-    let result;
-    try {
-      result = await conn.joinVoice();
-    } catch (e) {
-      stopStream();
-      detector.stop();
-      if (gen !== genRef.current) return;
-      phaseRef.current = "idle";
-      setPhase("idle");
-      notifyRef.current(errorMessage(e), "error");
-      return;
-    }
-    // Bu arada ayrıldık, bağlantı koptu ya da değişti: sunucudaki üyeliği geri al.
-    if (gen !== genRef.current || connRef.current !== conn || selfIdRef.current !== me) {
-      stopStream();
-      detector.stop();
-      conn.leaveVoice().catch(() => {});
       if (gen === genRef.current) {
         phaseRef.current = "idle";
         setPhase("idle");
@@ -180,6 +195,31 @@ export function useVoice({ connRef, selfId, notify }: Options) {
         },
       },
     );
+
+    // Bu arada ayrıldık, bağlantı koptu ya da değişti: sunucudaki üyelik geri alınır.
+    const isCurrent = () => gen === genRef.current && connRef.current === conn && selfIdRef.current === me;
+    let result: VoiceJoinResult | null;
+    try {
+      result = await joinVoiceBuffered(conn, session, sessionRef, isCurrent);
+    } catch (e) {
+      stopStream();
+      detector.stop();
+      if (gen !== genRef.current) return;
+      phaseRef.current = "idle";
+      setPhase("idle");
+      notifyRef.current(errorMessage(e), "error");
+      return;
+    }
+    if (!result) {
+      stopStream();
+      detector.stop();
+      if (gen === genRef.current) {
+        phaseRef.current = "idle";
+        setPhase("idle");
+      }
+      return;
+    }
+
     detector.onChange((id, on) =>
       setSpeaking((s) => {
         if (s.has(id) === on) return s;
@@ -190,7 +230,7 @@ export function useVoice({ connRef, selfId, notify }: Options) {
       }),
     );
     activeRef.current = { stream, session, detector, audios };
-    // Sonuç gelir gelmez (aynı tikte) başlat: bekleyen sinyaller kaybolmasın.
+    // Sonuç gelir gelmez (aynı tikte) başlat: tampondaki sinyaller start'ta işlenir.
     session.setMembers(result.members);
     session.start(stream, result.iceServers, me);
     detector.watch(me, stream);
@@ -237,13 +277,14 @@ export function useVoice({ connRef, selfId, notify }: Options) {
         notifyRef.current(VOICE_LOST_TEXT, "info");
         return;
       }
-      activeRef.current?.session.setMembers(list);
+      sessionRef.current?.setMembers(list);
     },
     [teardown],
   );
 
   const onSignal = useCallback((fromId: string, kind: VoiceSignalKind, payload: string) => {
-    void activeRef.current?.session.handleSignal(fromId, kind, payload);
+    // Katılma sürerken de oturuma gider: start()'tan önce gelenler tamponlanır.
+    void sessionRef.current?.handleSignal(fromId, kind, payload);
   }, []);
 
   /** SignalR koptu ya da yeniden bağlanıyor: sunucu üyeliği düşürür, biz de kapatırız (otomatik katılma yok). */

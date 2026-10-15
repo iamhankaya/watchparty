@@ -30,8 +30,9 @@ interface Watched {
  * Akışların konuşma durumunu yerelde hesaplar: tek AudioContext, akış başına AnalyserNode,
  * 100 ms'de bir RMS örneklemesi. Değişince onChange dinleyicileri çağrılır.
  * AudioContext yoksa (test/eski tarayıcı) sessizce hiçbir şey yapmaz.
- * İlk watch() kullanıcı etkileşiminden (sesli sohbete katıl tıklaması) çağrılmalı; aksi halde
- * tarayıcı AudioContext'i askıda başlatır (watch her çağrıda resume dener).
+ * prime() kullanıcı etkileşimi sırasında (sesli sohbete katıl tıklaması, ilk await'ten önce)
+ * çağrılmalı; aksi halde tarayıcı AudioContext'i askıda başlatır (watch her çağrıda resume dener,
+ * ama iOS Safari etkileşim dışındaki resume'u yok sayabilir).
  * Not: Chrome'da uzak WebRTC akışı ayrıca bir <audio> öğesine bağlı değilse analyser sessizlik görür.
  */
 export class SpeakingDetector {
@@ -39,6 +40,12 @@ export class SpeakingDetector {
   private readonly watched = new Map<string, Watched>();
   private readonly listeners = new Set<(id: string, speaking: boolean) => void>();
   private timer: ReturnType<typeof setInterval> | null = null;
+
+  /** AudioContext'i şimdi oluşturur ve askıdaysa sürdürür; tıklama işleyicisinde eşzamanlı çağrılır. */
+  prime(): void {
+    const ctx = this.context();
+    if (ctx?.state === "suspended") void ctx.resume().catch(() => {});
+  }
 
   watch(id: string, stream: MediaStream): void {
     this.unwatch(id);
