@@ -91,6 +91,49 @@ Kontroller: `/api/health` 200, `/l/ABCDEF` HTML, `/api/lobbies/ZZZZZZ` 404, CSP 
 
 `/api/health` 400 dönüyorsa `AllowedHosts` (origin DNS adı) uyuşmuyordur; bkz. CLAUDE.md.
 
+## Tarayıcıdan yükleme
+
+Anahtarı olan kişiler lobideki "Bilgisayardan yükle" düğmesiyle MP4 (+ isteğe bağlı altyazı) yükleyebilir. Dosya sunucudan geçmez: backend yükleme anahtarını (`X-Upload-Key`) doğrular ve S3'e kısa süreli (1 saat), dosyaya özel presigned URL'ler üretir; tarayıcı video bucket'ına doğrudan çok parçalı yükler (16 MB parça, 4 eşzamanlı).
+
+- **Sınırlar:** video en fazla 6 GB, `.mp4`/`.m4v`; altyazı en fazla 2 MB, `.srt`/`.vtt`.
+- **Konum:** `videolar/<32 hex gizli klasör>/<temizlenmiş ad>` (video bucket'ı); link `https://<cloudfront>/videolar/...`. Yaşam döngüsü aynen geçerli: 30 gün sonra silinir, yarım yüklemeler 2 günde iptal edilir. Elle silmek için yukarıdaki "Videolar" notuna bakın.
+- **Yanlış anahtar:** IP başına 10 dakikada en fazla 10 başarısız deneme; sonrası 429.
+- **Anahtarlar:** her kişiye ayrı, rastgele 32 karakterlik anahtar. Sunucuda yalnızca ad + **SHA-256 özeti** durur (`/etc/watchparty/watchparty.env`, `Upload__Keys__<i>__Name/Sha256`); açık anahtar repoya, loga ya da konsola yazılmaz.
+
+### İlk kurulum
+
+```powershell
+terraform -chdir=infra plan     # video bucket CORS, EC2 rolüne videolar/* yazma izni, CSP connect-src: yerinde güncelleme, 0 destroy
+terraform -chdir=infra apply
+deploy\deploy-backend.ps1       # yükleme uç noktalarını içeren sürüm
+deploy\deploy-frontend.ps1
+deploy\upload-keys.ps1 -Init    # ortam dosyasına Upload__VideoBucket ve Upload__PublicBaseUrl'i yazar (tekrar çalıştırılabilir)
+deploy\upload-keys.ps1 -Add ayse
+```
+
+Anahtar eklenene kadar yükleme kapalıdır (uç noktalar 403 "Yükleme kapalı" döner).
+
+### Anahtar yönetimi
+
+```powershell
+deploy\upload-keys.ps1 -Add <ad>      # yeni anahtar üretir
+deploy\upload-keys.ps1 -Remove <ad>   # erişimi kaldırır
+deploy\upload-keys.ps1 -List          # yalnızca adları listeler
+```
+
+Ortak seçenekler: `-Profile <ad>`, `-Force` (onay sorusunu atlar).
+
+- `-Add` anahtarı **ekrana yazmaz**: panoya kopyalar ve yalnızca "Anahtar panoya kopyalandı" der. Kişiye özel bir kanaldan (birebir mesaj) iletin; başka bir şey kopyalamadan önce gönderin, kaybolursa `-Remove` + `-Add` ile yenisini üretin. Özet SSM ile sunucudaki ortam dosyasına yazılır.
+- **Uyarı: her anahtar işlemi (`-Init`, `-Add`, `-Remove`) servisi yeniden başlatır ve açık lobileri düşürür.** Script önce uyarır ve onay ister; insanlar izlerken çalıştırmayın.
+- Anahtarı kişiye ilettikten sonra panoyu ve Windows pano geçmişini temizleyin (Win+V → "Tümünü temizle"; ya da `Set-Clipboard -Value " "`).
+- `-List` yeniden başlatmaz ve onay sormaz. `-Init` ayarlar zaten günceldeyse "zaten güncel" der ve yeniden başlatmaz.
+- Yanlış anahtar sınırına takılan IP, doğru anahtarı girse bile 10 dakikalık pencere bitene kadar 429 alır.
+- Güvenlik ağı: yazımdan sonra sağlık kontrolü başarısız olursa script önceki ortam dosyasını (`.bak`) geri yükler ve servisi yeniden başlatır.
+- **EC2 instance yenilenirse** (`-replace=aws_instance.api` vb.) ortam dosyası `user_data`'dan sıfırdan oluşur ve `Upload__` satırları kaybolur: yükleme "Yükleme kapalı" (403) döner. `-Init` ve ardından anahtarları yeniden ekleyin (eski anahtarlar geri getirilemez; yenilerini verin).
+- Kişi anahtarı tarayıcısında "Bu tarayıcıda hatırla" ile saklayabilir (`localStorage` `wp:uploadKey`).
+- Sızan anahtar: `-Remove <ad>`, ardından gerekirse yeni `-Add`.
+- CORS (yalnızca CloudFront origin'inden `PUT`, `ETag` açık) ve CSP `connect-src` (`https://<video_bucket>.s3.eu-north-1.amazonaws.com`) Terraform'dadır; yükleme tarayıcıda CORS/CSP hatası verirse önce `apply` yapıldığından emin olun.
+
 ## 6. Elle kontrol listesi
 
 - [ ] İki farklı tarayıcıda aynı lobide YouTube videosu senkron oynuyor.

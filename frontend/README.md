@@ -85,6 +85,13 @@ src/
 - Yerel geliştirmede yalnızca `frontend/public` içindeki dosyalar aynı alandadır.
 - Kişisel ayar: **CC** düğmesi altyazıyı bu izleyici için açar/kapar (`localStorage` `wp:subtitles`, varsayılan açık); herkesin ekranını etkilemez.
 
+## Bilgisayardan yükleme
+
+- `MediaPicker`'daki "Bilgisayardan yükle" düğmesi `UploadDialog`'u açar. Mock modunda (`VITE_MOCK`) düğme gizlidir: yükleme gerçek sunucu gerektirir.
+- Akış: yükleme anahtarı gir ("Bu tarayıcıda hatırla" → `localStorage` `wp:uploadKey`) → MP4 (`.mp4`/`.m4v`, en fazla 6 GB) ve isteğe bağlı altyazı (`.srt`/`.vtt`, en fazla 2 MB) seç (uzantı/boyut istemcide de denetlenir) → "Yükle" → ilerleme çubuğu, yüzde, hız (son 5 sn) ve kalan süre; "İptal" yüklemeyi durdurur → bitince linkler (kopyala) ve `canControl` iken "Lobide aç" (önce video, varsa sonra altyazı lobiye gönderilir). Pencerede not: "En iyi sonuç için H.264 video ve AAC ses içeren MP4 kullanın."
+- `lib/upload.ts` motoru (`uploadVideo`, `uploadSubtitle`): sunucudan parça planı ve presigned URL'ler alınır (`/api/uploads/video`, `/parts` 50'lik partilerle), tarayıcı parçaları doğrudan S3'e `PUT` eder. Parça 16 MB, aynı anda 4 parça, parça başına ilk deneme + 3 yeniden deneme (1/2/4 sn bekleme; süresi dolmuş URL için 403 gelirse URL bir kez yeniden istenir); ETag'ler PUT yanıt başlığından okunup `/complete`'e sırayla gönderilir. Hata ya da `AbortSignal` iptali en iyi çabayla `/abort` çağırır (hatalar yutulur; başlatma çağrısı sürerken iptal ya da sekmeyi kapatmak abort göndermez). Geride kalan yarım yüklemeleri bucket'ın 2 günlük yaşam döngüsü kuralı temizler. Her istek `X-Upload-Key` taşır; sunucu hata metinleri (ör. "Yükleme anahtarı geçersiz") olduğu gibi gösterilir. Altyazı tek bir `PUT`'tur.
+- Dosya sunucudan geçmediği için S3 tarafında CORS ve CSP `connect-src` gerekir (bkz. `deploy/README.md`). Testler sahte `fetch` ile `lib/upload.test.ts`'te.
+
 ## Sohbet bildirimi ve "yazıyor…"
 
 - Ses: başkasının **yeni** mesajı gelince ve mesaj görünmüyorken (`document.hidden`, pencere odakta değil ya da tam ekranda sohbet kapalı)
