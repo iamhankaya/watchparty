@@ -19,15 +19,19 @@ log() { echo "[remote-deploy] $*"; }
 
 # Sağlık kontrolü: WP_HEALTH_TIMEOUT saniyelik son tarih içinde saniyede bir dener;
 # takılan tek bir deneme de kalan süreyle sınırlanır (timeout).
+# Ara denemelerin hata çıktısı (Kestrel açılana kadar "Failed to connect") gizlenir;
+# süre dolarsa tanı kaybolmasın diye son denemenin hatası loglanır.
 wait_healthy() {
-  local deadline remaining
+  local deadline remaining err=""
   deadline=$((SECONDS + WP_HEALTH_TIMEOUT))
   while [ "$SECONDS" -lt "$deadline" ]; do
     remaining=$((deadline - SECONDS))
+    # stdout atılır, yalnızca stderr yakalanır.
     # shellcheck disable=SC2086
-    if timeout "$remaining" $WP_HEALTH; then return 0; fi
+    if err="$(timeout "$remaining" $WP_HEALTH 2>&1 >/dev/null)"; then return 0; fi
     sleep 1
   done
+  [ -n "$err" ] && log "Son sağlık denemesinin hatası: $err"
   return 1
 }
 
