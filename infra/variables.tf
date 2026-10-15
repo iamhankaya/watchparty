@@ -26,3 +26,9 @@ variable "alert_email" {
   description = "Alarm bildirimlerinin gideceği e-posta (infra/terraform.tfvars içinde verilir; repoya girmez)"
   type        = string
 }
+
+variable "upload_dev_origin" {
+  description = "Video bucket CORS'una eklenecek isteğe bağlı geliştirme origin'i (ör. http://localhost:5173); boşsa eklenmez"
+  type        = string
+  default     = ""
+}
