@@ -2,6 +2,6 @@
   "name": "watchparty-e2e",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node e2e.mjs", "smoke": "node smoke.mjs" },
+  "scripts": { "test": "node e2e.mjs", "smoke": "node smoke.mjs", "test:smoke": "node --test tests/smoke-timeout.test.mjs" },
   "dependencies": { "@microsoft/signalr": "8.0.7" }
 }
