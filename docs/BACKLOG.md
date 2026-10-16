@@ -11,7 +11,6 @@ Yapılacaklar, önem sırasıyla değil gruplar halinde. Bir madde ele alınınc
 - **Release klasörü sahipliği.** `/opt/watchparty` ve release'ler uygulamanın kendi kullanıcısına ait; `root:root` + salt okunur daha güvenli (`user_data.sh.tftpl` ve `remote-deploy.sh` `WP_CHOWN`).
 - **Kök dosyaların MIME tipi.** `deploy-frontend.ps1` js/css/html'i açık tiple yüklüyor; favicon gibi diğer kök dosyalar hâlâ Windows kayıt defterinden tahmin edilen tiple gidiyor.
 - **Terraform kilit dosyası** yalnızca Windows hash'leri içeriyor; başka işletim sisteminde kullanılacaksa `terraform providers lock -platform=linux_amd64 -platform=darwin_arm64`.
-- **Smoke testinde zaman aşımları.** `backend/e2e/smoke.mjs` fetch ve hub bağlantılarında süre sınırı yok; yanıt vermeyen bir uçta uzun süre bekleyebilir.
 
 ## Uygulama
 
