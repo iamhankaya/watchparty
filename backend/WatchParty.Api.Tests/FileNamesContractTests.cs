@@ -35,6 +35,12 @@ public class FileNamesContractTests
         Assert.Equal("video/x-matroska", FileNames.MatroskaContentType);
     }
 
+    [Fact]
+    public void Mp4_content_type_constant_is_video_mp4()
+    {
+        Assert.Equal("video/mp4", FileNames.Mp4ContentType);
+    }
+
     [Theory]
     [InlineData("videolar/0123456789abcdef0123456789abcdef/a.mp4")]
     [InlineData("videolar/0123456789abcdef0123456789abcdef/a.m4v")]

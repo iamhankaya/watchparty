@@ -3,9 +3,9 @@
 
 export type PlaybackFailureKind = "autoplay" | "network" | "unsupported" | "decode";
 
+/** Gösterilecek metin `FAILURE_MESSAGES[kind]`'dan türetilir (tek kaynak). */
 export interface PlaybackFailure {
   kind: PlaybackFailureKind;
-  message: string;
 }
 
 export const FAILURE_MESSAGES: Record<PlaybackFailureKind, string> = {

@@ -29,7 +29,11 @@ public static partial class FileNames
     /// <summary>İstemcinin gönderdiği dosya anahtarı bu sunucunun ürettiği biçimde mi.</summary>
     public static bool IsValidKey(string? key) => key is not null && KeyPattern().IsMatch(key);
 
-    /// <summary>Video uzantısına (noktasız, küçük harf) göre S3 içerik türü; sunucu belirler, istemci belirleyemez.</summary>
+    /// <summary>
+    /// Video uzantısına (noktasız, küçük harf) göre S3 içerik türü; sunucu belirler, istemci belirleyemez.
+    /// mp4/m4v → <see cref="Mp4ContentType"/>, mkv → <see cref="MatroskaContentType"/>; başka her girdi
+    /// (büyük harf, noktalı, null, srt/avi) <see cref="ArgumentException"/> fırlatır, sessizce mp4 dönmez.
+    /// </summary>
     public static string ContentTypeFor(string extension) =>
         throw new NotImplementedException("Uygulama fazında yazılacak (T20261029-23)");
 

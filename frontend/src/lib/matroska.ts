@@ -28,12 +28,19 @@ export interface MkvInspection {
   tracks: MkvTrack[];
 }
 
-/** Dosyanın başlığından iz listesini okur; `signal` ile iptal edilir. Asla sonsuza dek okumaz. */
+/**
+ * Dosyanın başlığından iz listesini okur. `tracks` dosya sırasındadır (tarayıcı ilk ses izini çalar).
+ * Bozuk/kesik dosya ya da okuma bütçesi aşımında reject ETMEZ, `status: "unreadable"` döner; yalnız
+ * `signal` iptalinde `AbortError` ile reject eder.
+ */
 export function readMatroskaTracks(_file: Blob, _signal?: AbortSignal): Promise<MkvInspection> {
   return Promise.reject(new Error("Uygulama fazında yazılacak (T20261029-23)"));
 }
 
-/** Kullanıcıya gösterilecek uyarı metni; uyarı gerekmiyorsa null. Yükleme asla engellenmez. */
+/**
+ * Tek birleşik uyarı metni (AC3 uyarısı ve çok izli ses listesi aynı metinde); gerekmiyorsa null.
+ * Yükleme asla engellenmez. "İnceleme belirsiz" durumu `unreadable` için ayrı bilgi metnidir.
+ */
 export function audioWarning(_inspection: MkvInspection): string | null {
   throw new Error("Uygulama fazında yazılacak (T20261029-23)");
 }
