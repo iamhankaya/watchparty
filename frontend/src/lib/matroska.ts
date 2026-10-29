@@ -116,7 +116,10 @@ function parseTracks(buf: Uint8Array, tracks: Element): MkvTrack[] {
         const t = readUint(buf, f);
         track.type = t === 1 ? "video" : t === 2 ? "audio" : t === 17 ? "subtitle" : "other";
       } else if (f.id === ID_CODEC_ID) track.codecId = readString(buf, f);
-      else if (f.id === ID_LANGUAGE) track.language = readString(buf, f);
+      else if (f.id === ID_LANGUAGE) {
+        const lang = readString(buf, f);
+        if (lang !== "und") track.language = lang; // "und" = belirsiz, dil bilgisi yok say
+      }
       else if (f.id === ID_NAME) track.name = readString(buf, f);
     }
     if (track.type === "audio") track.audio = audioCompatibility(track.codecId);
