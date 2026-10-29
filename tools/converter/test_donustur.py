@@ -28,7 +28,10 @@ class PlanTestleri(unittest.TestCase):
         self.assertEqual(d.plan([H264, ses("aac"), ses("eac3")])[0], "dokunma")
         self.assertEqual(d.plan([H264, ses("eac3"), ses("aac")])[0], "ses")
 
-    def test_h264_olmayan_video_atlanir(self):
+    def test_h264_olmayan_video_uyumlu_sesle_dokunulmaz(self):
+        self.assertEqual(d.plan([{**H264, "codec_name": "hevc"}, ses("aac")])[0], "dokunma")
+
+    def test_h264_olmayan_video_uyumsuz_sesle_atlanir(self):
         karar, neden = d.plan([{**H264, "codec_name": "hevc"}, ses("eac3")])
         self.assertEqual(karar, "atla")
         self.assertIn("H.264", neden)
@@ -53,7 +56,10 @@ class ArgumanTestleri(unittest.TestCase):
 
     def test_tire_ile_baslayan_girdi_secenek_sayilmaz(self):
         a = d.ffmpeg_argumanlari(Path("-kotu.mkv"), Path("b.mp4.tmp"))
-        self.assertEqual(a[a.index("-i") + 1], str(Path("./-kotu.mkv")))
+        for yol in (a[a.index("-i") + 1], a[-1]):
+            self.assertFalse(yol.startswith("-"), yol)
+        a = d.ffmpeg_argumanlari(Path("a.mkv"), Path("-cikti.mp4"))
+        self.assertFalse(a[-1].startswith("-"))
 
 
 class SureTestleri(unittest.TestCase):
@@ -66,9 +72,12 @@ class SureTestleri(unittest.TestCase):
     def test_kucuk_fark_gecer(self):
         self.assertTrue(d.sure_yeterli_mi(600.0, 598.5))
 
-    def test_sure_bilinmiyorsa_gecmez(self):
-        self.assertFalse(d.sure_yeterli_mi(None, 10.0))
+    def test_girdi_suresi_yoksa_ciktinin_suresi_yeter(self):
+        self.assertTrue(d.sure_yeterli_mi(None, 10.0))
+
+    def test_cikti_suresi_yoksa_gecmez(self):
         self.assertFalse(d.sure_yeterli_mi(10.0, None))
+        self.assertFalse(d.sure_yeterli_mi(None, None))
 
 
 class YolTestleri(unittest.TestCase):
@@ -125,6 +134,16 @@ class GercekDosyaTestleri(unittest.TestCase):
         akislar, _ = d.probe(cikti)
         self.assertEqual([a["codec_name"] for a in akislar if a["codec_type"] == "audio"], ["aac"])
         self.assertEqual([a["codec_name"] for a in akislar if a["codec_type"] == "video"], ["h264"])
+
+    def test_tire_ile_baslayan_dosya_adi(self):
+        import os
+        girdi = self._uret("-film.mkv", "eac3")
+        eski = os.getcwd()
+        os.chdir(self.kok)
+        self.addCleanup(os.chdir, eski)
+        sonuc = d.donustur_dosya(Path("-film.mkv"), None, dry_run=False)
+        self.assertEqual(sonuc.durum, "donusturuldu", sonuc.mesaj)
+        self.assertTrue((self.kok / "-film-aac.mp4").is_file())
 
     def test_dry_run_dosya_uretmez(self):
         girdi = self._uret("film.mkv", "eac3")

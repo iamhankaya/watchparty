@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -35,7 +36,7 @@ class DonusturucuHatasi(Exception):
 @dataclass
 class Sonuc:
     girdi: Path
-    durum: str  # donusturuldu | donusturulecek | dokunulmadi | atlandi | hata
+    durum: str  # uygun-degil | donusturuldu | donusturulecek | dokunulmadi | atlandi | hata
     mesaj: str = ""
     cikti: Path | None = None
 
@@ -44,31 +45,38 @@ def plan(akislar: list[dict]) -> tuple[str, str]:
     """(karar, neden) döner; karar: 'ses' (sesi çevir), 'dokunma' ya da 'atla' (araç uygun değil)."""
     video = [a for a in akislar if a.get("codec_type") == "video"]
     ses = [a for a in akislar if a.get("codec_type") == "audio"]
+    if not ses:
+        return "dokunma", "ses akışı yok"
+    kodek = ses[0].get("codec_name")
+    if kodek not in UYUMSUZ_SESLER:
+        return "dokunma", f"ses zaten uyumlu ({kodek})"
+    # Ses çevrilmeli ama araç yalnız H.264 videoyu kopyalayabilir.
     if not video:
         return "atla", "video akışı yok"
     if video[0].get("codec_name") != "h264":
         return "atla", f"video H.264 değil ({video[0].get('codec_name')}); bu araç videoyu yeniden kodlamaz"
-    if not ses:
-        return "dokunma", "ses akışı yok"
-    kodek = ses[0].get("codec_name")
-    if kodek in UYUMSUZ_SESLER:
-        return "ses", f"ses {kodek}, AAC'ye çevrilecek"
-    return "dokunma", f"ses zaten uyumlu ({kodek})"
+    return "ses", f"ses {kodek}, AAC'ye çevrilecek"
+
+
+def guvenli_yol(yol: Path) -> str:
+    """Tire ile başlayan yol ffmpeg'de seçenek sanılmasın."""
+    s = str(yol)
+    return os.path.join(".", s) if s.startswith("-") else s
 
 
 def ffmpeg_argumanlari(girdi: Path, cikti: Path) -> list[str]:
-    # Tire ile başlayan göreli yol ffmpeg'de seçenek sanılmasın.
-    g = girdi if girdi.is_absolute() or not girdi.name.startswith("-") else Path(".") / girdi
     return ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-stats",
-            "-i", str(g), "-map", "0:v:0", "-map", "0:a:0",
+            "-i", guvenli_yol(girdi), "-map", "0:v:0", "-map", "0:a:0",
             "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-ac", "2",
-            "-movflags", "+faststart", "-f", "mp4", str(cikti)]
+            "-movflags", "+faststart", "-f", "mp4", guvenli_yol(cikti)]
 
 
 def sure_yeterli_mi(girdi_sure: float | None, cikti_sure: float | None) -> bool:
     """ffmpeg kesik girdide bile 0 çıkışla kısa dosya üretebilir; süreyi karşılaştır."""
-    if not girdi_sure or not cikti_sure:
+    if not cikti_sure:
         return False
+    if not girdi_sure:  # girdide süre etiketi yok: karşılaştırılamaz, çıktının süresi olması yeter
+        return True
     return cikti_sure >= girdi_sure - max(SURE_PAYI_SN, girdi_sure * SURE_PAYI_ORAN)
 
 
@@ -109,6 +117,8 @@ def donustur_dosya(girdi: Path, cikti_dizini: Path | None, dry_run: bool) -> Son
     except DonusturucuHatasi as e:
         return Sonuc(girdi, "hata", str(e))
     karar, neden = plan(akislar)
+    if karar == "atla":
+        return Sonuc(girdi, "uygun-degil", f"sesi çevrilmeli ama {neden}")
     if karar != "ses":
         return Sonuc(girdi, "dokunulmadi", neden)
     cikti = cikti_yolu(girdi, cikti_dizini)
@@ -163,8 +173,8 @@ def main(argv: list[str] | None = None) -> int:
     for g in girdiler:
         s = donustur_dosya(g, a.cikti, a.dry_run)
         sonuclar.append(s)
-        print(f"[{s.durum}] {g.name}: {s.mesaj}", file=sys.stderr if s.durum == "hata" else sys.stdout)
-    hatali = sum(s.durum == "hata" for s in sonuclar)
+        print(f"[{s.durum}] {g.name}: {s.mesaj}", file=sys.stdout if s.durum in ("donusturuldu", "donusturulecek", "dokunulmadi", "atlandi") else sys.stderr)
+    hatali = sum(s.durum in ("hata", "uygun-degil") for s in sonuclar)
     print(f"\n{len(sonuclar)} dosya: {sum(s.durum in ('donusturuldu', 'donusturulecek') for s in sonuclar)} dönüştürülen, "
           f"{sum(s.durum in ('dokunulmadi', 'atlandi') for s in sonuclar)} atlanan, {hatali} hatalı.")
     return 1 if hatali else 0

@@ -80,7 +80,7 @@ def ffmpeg_argumanlari(girdi: Path, cikti: Path, mod: str,
     if mod == "ses":
         return ses_araci.ffmpeg_argumanlari(girdi, cikti)
     args = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-stats",
-            "-i", str(girdi), "-map", "0:v:0", "-map", "0:a:0?"]
+            "-i", ses_araci.guvenli_yol(girdi), "-map", "0:v:0", "-map", "0:a:0?"]
     if mod == "kopya":
         args += ["-c", "copy"]
     else:
@@ -88,7 +88,7 @@ def ffmpeg_argumanlari(girdi: Path, cikti: Path, mod: str,
         if maks_yukseklik:
             args += ["-vf", f"scale=-2:'min({maks_yukseklik},ih)'"]
         args += ["-c:a", "aac", "-b:a", "192k", "-ac", "2"]
-    return args + ["-movflags", "+faststart", str(cikti)]
+    return args + ["-movflags", "+faststart", ses_araci.guvenli_yol(cikti)]
 
 
 def icerik_turu(yol: Path) -> str:
@@ -150,14 +150,14 @@ def indir(url: str, klasor: Path, maks_yukseklik: int | None) -> tuple[Path, str
 
 def video_akislari(yol: Path) -> list[dict]:
     sonuc = subprocess.run(
-        ["ffprobe", "-v", "error", "-print_format", "json", "-show_streams", str(yol)],
+        ["ffprobe", "-v", "error", "-print_format", "json", "-show_streams", ses_araci.guvenli_yol(yol)],
         capture_output=True, text=True, check=True)
     return json.loads(sonuc.stdout).get("streams", [])
 
 
 def sure_oku(yol: Path) -> float | None:
     sonuc = subprocess.run(
-        ["ffprobe", "-v", "error", "-print_format", "json", "-show_format", str(yol)],
+        ["ffprobe", "-v", "error", "-print_format", "json", "-show_format", ses_araci.guvenli_yol(yol)],
         capture_output=True, text=True, check=True)
     try:
         return float(json.loads(sonuc.stdout).get("format", {}).get("duration"))
@@ -230,10 +230,13 @@ def ses_hazirla(dosya: Path, cikti_dizini: Path) -> Path:
     """Sesi uyumsuzsa <ad>-aac.mp4 üretip onu döner; değilse dosyaya dokunmaz."""
     s = ses_araci.donustur_dosya(dosya, cikti_dizini, dry_run=False)
     print(f"{dosya.name}: {s.mesaj}", flush=True)
-    if s.durum == "hata":
-        raise AracHatasi(s.mesaj)
-    if s.durum == "atlandi":  # önceki çalıştırmada doğrulanıp yazılmış çıktı
-        return ses_araci.cikti_yolu(dosya, cikti_dizini)
+    if s.durum in ("hata", "uygun-degil"):
+        raise AracHatasi(s.mesaj + (" (yine de yüklemek için --ses-donustur hayir)" if s.durum == "uygun-degil" else ""))
+    if s.durum == "atlandi":  # aynı adlı çıktı var; elle konmuş olabilir, sesini doğrula
+        var = ses_araci.cikti_yolu(dosya, cikti_dizini)
+        if ses_araci.plan(ses_araci.probe(var)[0])[0] != "dokunma":
+            raise AracHatasi(f"{var.name} zaten var ama sesi uyumlu değil; silin ya da başka --cikti verin.")
+        return var
     return s.cikti or dosya
 
 
