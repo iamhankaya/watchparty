@@ -23,6 +23,10 @@ import unicodedata
 from pathlib import Path
 from urllib.parse import quote
 
+# Ses dönüşümü ve süre doğrulaması bağımsız dönüştürücü aracından gelir.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "converter"))
+import donustur as ses_araci  # noqa: E402
+
 # Backend MediaValidator.MaxIdLength ile aynı olmalı.
 MAKS_URL_UZUNLUGU = 200
 
@@ -57,32 +61,39 @@ def format_secici(maks_yukseklik: int | None) -> str:
     ])
 
 
-def kopyalanabilir_mi(akislar: list[dict], maks_yukseklik: int | None) -> bool:
-    """Akışlar yeniden kodlanmadan tarayıcıda oynatılabiliyorsa True."""
+def donusum_plani(akislar: list[dict], maks_yukseklik: int | None) -> str:
+    """'kopya' (dokunma), 'ses' (video kopyalanır, ses AAC olur) ya da 'tam' (x264 + AAC)."""
     video = [a for a in akislar if a.get("codec_type") == "video"]
     ses = [a for a in akislar if a.get("codec_type") == "audio"]
     if not video:
-        return False
+        return "tam"
     v = video[0]
     if v.get("codec_name") != "h264" or v.get("pix_fmt") != "yuv420p":
-        return False
+        return "tam"
     if maks_yukseklik and int(v.get("height") or 0) > maks_yukseklik:
-        return False
-    return not ses or ses[0].get("codec_name") == "aac"
+        return "tam"
+    return "kopya" if not ses or ses[0].get("codec_name") == "aac" else "ses"
 
 
-def ffmpeg_argumanlari(girdi: Path, cikti: Path, kopyala: bool,
+def ffmpeg_argumanlari(girdi: Path, cikti: Path, mod: str,
                        maks_yukseklik: int | None, crf: int) -> list[str]:
+    if mod == "ses":
+        return ses_araci.ffmpeg_argumanlari(girdi, cikti)
     args = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-stats",
             "-i", str(girdi), "-map", "0:v:0", "-map", "0:a:0?"]
-    if kopyala:
+    if mod == "kopya":
         args += ["-c", "copy"]
     else:
         args += ["-c:v", "libx264", "-crf", str(crf), "-preset", "medium", "-pix_fmt", "yuv420p"]
         if maks_yukseklik:
             args += ["-vf", f"scale=-2:'min({maks_yukseklik},ih)'"]
-        args += ["-c:a", "aac", "-b:a", "128k", "-ac", "2"]
+        args += ["-c:a", "aac", "-b:a", "192k", "-ac", "2"]
     return args + ["-movflags", "+faststart", str(cikti)]
+
+
+def icerik_turu(yol: Path) -> str:
+    """Backend FileNames.ContentTypeFor ile aynı: mkv -> video/x-matroska, aksi video/mp4."""
+    return "video/x-matroska" if yol.suffix.lower() == ".mkv" else "video/mp4"
 
 
 def s3_anahtari(onek: str, dosya_adi: str) -> str:
@@ -144,15 +155,37 @@ def video_akislari(yol: Path) -> list[dict]:
     return json.loads(sonuc.stdout).get("streams", [])
 
 
-def donustur(girdi: Path, cikti: Path, maks_yukseklik: int | None, crf: int) -> None:
-    kopyala = kopyalanabilir_mi(video_akislari(girdi), maks_yukseklik)
-    print("Dönüştürme gerekmiyor, faststart ile kopyalanıyor..." if kopyala
-          else "Web'e uygun MP4'e dönüştürülüyor (bu biraz sürebilir)...", flush=True)
+def sure_oku(yol: Path) -> float | None:
+    sonuc = subprocess.run(
+        ["ffprobe", "-v", "error", "-print_format", "json", "-show_format", str(yol)],
+        capture_output=True, text=True, check=True)
     try:
-        subprocess.run(ffmpeg_argumanlari(girdi, cikti, kopyala, maks_yukseklik, crf), check=True)
-    except subprocess.CalledProcessError as e:
+        return float(json.loads(sonuc.stdout).get("format", {}).get("duration"))
+    except (TypeError, ValueError):
+        return None
+
+
+MESAJLAR = {
+    "kopya": "Dönüştürme gerekmiyor, faststart ile kopyalanıyor...",
+    "ses": "Video aynen kopyalanıyor, ses AAC'ye çevriliyor...",
+    "tam": "Web'e uygun MP4'e dönüştürülüyor (bu biraz sürebilir)...",
+}
+
+
+def donustur(girdi: Path, cikti: Path, maks_yukseklik: int | None, crf: int) -> None:
+    mod = donusum_plani(video_akislari(girdi), maks_yukseklik)
+    print(MESAJLAR[mod], flush=True)
+    try:
+        try:
+            subprocess.run(ffmpeg_argumanlari(girdi, cikti, mod, maks_yukseklik, crf), check=True)
+        except subprocess.CalledProcessError as e:
+            raise AracHatasi(f"ffmpeg başarısız oldu (çıkış kodu {e.returncode}).") from e
+        # ffmpeg kesik girdide de 0 ile çıkıp kısa dosya üretebilir.
+        if not ses_araci.sure_yeterli_mi(sure_oku(girdi), sure_oku(cikti)):
+            raise AracHatasi("Çıktı süresi girdiyle uyuşmuyor; girdi kesik olabilir. Çıktı silindi.")
+    except BaseException:
         cikti.unlink(missing_ok=True)
-        raise AracHatasi(f"ffmpeg başarısız oldu (çıkış kodu {e.returncode}).") from e
+        raise
 
 
 class YuklemeIlerlemesi:
@@ -183,7 +216,7 @@ def yukle(yol: Path, bucket: str, key: str, bolge: str | None) -> str:
             bolge = istemci.get_bucket_location(Bucket=bucket).get("LocationConstraint") or "us-east-1"
         istemci.upload_file(
             str(yol), bucket, key,
-            ExtraArgs={"ContentType": "video/mp4", "CacheControl": "public, max-age=31536000, immutable"},
+            ExtraArgs={"ContentType": icerik_turu(yol), "CacheControl": "public, max-age=31536000, immutable"},
             Callback=YuklemeIlerlemesi(yol.stat().st_size), Config=aktarim)
         print()
     except NoCredentialsError as e:
@@ -191,6 +224,17 @@ def yukle(yol: Path, bucket: str, key: str, bolge: str | None) -> str:
     except (BotoCoreError, ClientError) as e:
         raise AracHatasi(f"S3 yüklemesi başarısız: {e}") from e
     return bolge
+
+
+def ses_hazirla(dosya: Path, cikti_dizini: Path) -> Path:
+    """Sesi uyumsuzsa <ad>-aac.mp4 üretip onu döner; değilse dosyaya dokunmaz."""
+    s = ses_araci.donustur_dosya(dosya, cikti_dizini, dry_run=False)
+    print(f"{dosya.name}: {s.mesaj}", flush=True)
+    if s.durum == "hata":
+        raise AracHatasi(s.mesaj)
+    if s.durum == "atlandi":  # önceki çalıştırmada doğrulanıp yazılmış çıktı
+        return ses_araci.cikti_yolu(dosya, cikti_dizini)
+    return s.cikti or dosya
 
 
 def argumanlari_oku(argv: list[str] | None = None) -> argparse.Namespace:
@@ -205,6 +249,8 @@ def argumanlari_oku(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--s3-onek", default=os.environ.get("WP_S3_ONEK", "videolar"), help="S3 anahtar öneki (varsayılan: videolar)")
     p.add_argument("--bolge", default=os.environ.get("AWS_REGION"), help="Bucket bölgesi (verilmezse sorgulanır)")
     p.add_argument("--cdn-url", default=os.environ.get("WP_CDN_URL"), help="CloudFront adresi (ya da WP_CDN_URL), ör. https://dxxxx.cloudfront.net")
+    p.add_argument("--ses-donustur", choices=["otomatik", "hayir"], default="otomatik",
+                   help="--dosya için: tarayıcıda çalmayan ses (E-AC3/AC3/DTS/TrueHD) AAC'ye çevrilsin mi (varsayılan: otomatik)")
     p.add_argument("--sadece-indir", action="store_true", help="S3'e yükleme yapma")
     a = p.parse_args(argv)
     if bool(a.url) == bool(a.dosya):
@@ -225,6 +271,9 @@ def main(argv: list[str] | None = None) -> int:
             if not a.dosya.is_file():
                 raise AracHatasi(f"Dosya bulunamadı: {a.dosya}")
             son = a.dosya
+            if a.ses_donustur == "otomatik":
+                araclari_kontrol_et()
+                son = ses_hazirla(a.dosya, a.cikti)
         else:
             araclari_kontrol_et()
             a.cikti.mkdir(parents=True, exist_ok=True)
