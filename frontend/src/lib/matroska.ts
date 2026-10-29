@@ -96,8 +96,12 @@ const readUint = (buf: Uint8Array, e: Element) => {
   for (let i = e.dataStart; i < e.dataEnd!; i++) v = v * 256 + buf[i];
   return v;
 };
-const readString = (buf: Uint8Array, e: Element) =>
-  new TextDecoder().decode(buf.subarray(e.dataStart, e.dataEnd!)).replace(/\0+$/, "");
+// İlk NUL'da keser; /\0+$/ regex'i çok NUL'da ikinci dereceydi (F-watchparty-001).
+const readString = (buf: Uint8Array, e: Element) => {
+  const s = new TextDecoder().decode(buf.subarray(e.dataStart, e.dataEnd!));
+  const i = s.indexOf("\0");
+  return i < 0 ? s : s.slice(0, i);
+};
 
 function audioCompatibility(codecId: string): AudioCompatibility {
   if (/^A_(AAC|OPUS|VORBIS|FLAC|MPEG\/L3|PCM)/.test(codecId)) return "plays";
