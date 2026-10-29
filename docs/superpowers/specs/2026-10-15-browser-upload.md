@@ -10,7 +10,7 @@ Kaynak: 2026-10-15 brainstorming'i. Uygulamayı kullanan arkadaşlar da (komut s
 | Anahtar yönetimi | `deploy/upload-keys.ps1` (`-Add <ad>` / `-Remove <ad>` / `-List`): anahtarı üretir, açık halini konsola **yazmaz**: Windows panosuna kopyalar (`Set-Clipboard`) ve yalnızca "panoya kopyalandı" der — böylece script Claude tarafından çalıştırılsa bile anahtar sohbet geçmişine girmez —, özeti SSM ile sunucudaki `/etc/watchparty/watchparty.env`'e yazar ve servisi yeniden başlatır (lobiler düşer; kullanıcı uyarılır). Açık anahtar repoya, loga, sohbete girmez |
 | Doğrulama | Her yükleme başlangıcında; sabit zamanlı karşılaştırma; yanlış denemeler IP başına **10 dk'da 10** |
 | Yükleme yolu | Tarayıcı → S3 doğrudan, multipart: parça 16 MB, aynı anda 4 parça, parça başına 3 yeniden deneme; izinler 1 saat geçerli, partiler halinde istenir |
-| Sınırlar | Video ≤ **6 GB**, `.mp4`/`.m4v`; altyazı ≤ **2 MB**, `.srt`/`.vtt` |
+| Sınırlar | Video ≤ **6 GB**, `.mp4`/`.m4v`/`.mkv`; altyazı ≤ **2 MB**, `.srt`/`.vtt` |
 | Konum | `videolar/<32 hex>/<temizlenmiş ad>` (gizli klasör), video bucket'ı (30 gün yaşam döngüsü geçerli) |
 | Sonuç | `https://<cloudfront>/videolar/...` linkleri; "Lobide aç" (video + altyazı) |
 | Kayıt | Sunucu logu: anahtar adı, dosya anahtarı, boyut (anahtarın kendisi asla) |
@@ -28,9 +28,9 @@ Kaynak: 2026-10-15 brainstorming'i. Uygulamayı kullanan arkadaşlar da (komut s
   - `POST /api/uploads/video/complete` `{ key, uploadId, parts: { partNumber, eTag }[] }` → `CompleteMultipartUpload` → `{ url }`.
   - `POST /api/uploads/video/abort` `{ key, uploadId }` → `AbortMultipartUpload`.
   - `POST /api/uploads/subtitle` `{ fileName, size }` → presigned tek `PutObject` (`Content-Type` uzantıya göre: `text/vtt` / `application/x-subrip`, `CacheControl` aynı) → `{ key, putUrl, url }`.
-  - Hepsi `X-Upload-Key` ister; `key` parametreleri yalnızca `videolar/` önekli ve bu sunucunun ürettiği biçimde (`videolar/[0-9a-f]{32}/[a-z0-9-]+\.(mp4|m4v|srt|vtt)`) kabul edilir → aksi 400 `"Geçersiz dosya anahtarı"`.
+  - Hepsi `X-Upload-Key` ister; `key` parametreleri yalnızca `videolar/` önekli ve bu sunucunun ürettiği biçimde (`videolar/[0-9a-f]{32}/[a-z0-9-]+\.(mp4|m4v|mkv|srt|vtt)`) kabul edilir → aksi 400 `"Geçersiz dosya anahtarı"`.
 - Dosya adı temizleme: Türkçe karakterler ASCII'ye (`ğ→g, ü→u, ş→s, ı→i, ö→o, ç→c`), küçük harf, `[a-z0-9]` dışı tek `-`, en fazla 80 karakter, uzantı korunur; boşsa `video`/`altyazi`. Sonuç linki `MediaValidator`'ın 200 karakter sınırına sığar (doğrulanır).
-- Hatalar Türkçe: `"Dosya çok büyük"`, `"Yalnızca .mp4 veya .m4v yüklenebilir"`, `"Yalnızca .srt veya .vtt yüklenebilir"`, `"Yükleme tamamlanamadı"` (S3 hatası, ayrıntı yalnızca logda).
+- Hatalar Türkçe: `"Dosya çok büyük"`, `"Yalnızca .mp4, .m4v veya .mkv yüklenebilir"`, `"Yalnızca .srt veya .vtt yüklenebilir"`, `"Yükleme tamamlanamadı"` (S3 hatası, ayrıntı yalnızca logda).
 - AWS: `AWSSDK.S3`; kimlik bilgisi EC2 instance rolünden (yerelde `AWS_PROFILE`); bölge `eu-north-1`.
 
 ### 2. Altyapı (Terraform)
