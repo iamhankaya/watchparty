@@ -50,4 +50,43 @@ public class FileNamesContractTests
     {
         Assert.True(FileNames.IsValidKey(key));
     }
+
+    [Theory]
+    [InlineData("mp4", "video/mp4")]
+    [InlineData("m4v", "video/mp4")]
+    [InlineData("mkv", "video/x-matroska")]
+    public void Content_type_follows_extension(string ext, string expected)
+    {
+        Assert.Equal(expected, FileNames.ContentTypeFor(ext));
+    }
+
+    [Theory]
+    [InlineData("MKV")]
+    [InlineData(".mkv")]
+    [InlineData("srt")]
+    [InlineData("avi")]
+    [InlineData("")]
+    public void Content_type_rejects_everything_else(string ext)
+    {
+        Assert.Throws<ArgumentException>(() => FileNames.ContentTypeFor(ext));
+    }
+
+    [Fact]
+    public void Content_type_rejects_null()
+    {
+        Assert.Throws<ArgumentException>(() => FileNames.ContentTypeFor(null!));
+    }
+
+    [Fact]
+    public void Every_video_extension_makes_a_valid_key_and_lookalikes_are_not()
+    {
+        foreach (var ext in FileNames.VideoExtensions)
+        {
+            Assert.True(FileNames.IsValidKey($"videolar/0123456789abcdef0123456789abcdef/a.{ext}"), ext);
+            Assert.Equal(ext == "mkv" ? "video/x-matroska" : "video/mp4", FileNames.ContentTypeFor(ext));
+        }
+        Assert.False(FileNames.IsValidKey("videolar/0123456789abcdef0123456789abcdef/a.mkvx"));
+        Assert.False(FileNames.IsValidKey("videolar/0123456789abcdef0123456789abcdef/a.mkv.exe"));
+        Assert.False(FileNames.IsValidKey("videolar/0123456789abcdef0123456789abcdef/a.MKV"));
+    }
 }

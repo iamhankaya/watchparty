@@ -118,14 +118,14 @@ public static partial class UploadEndpoints
     }
 
     private static bool IsVideoKey(string? key) =>
-        FileNames.IsValidKey(key) && (key!.EndsWith(".mp4", StringComparison.Ordinal) || key.EndsWith(".m4v", StringComparison.Ordinal));
+        FileNames.IsValidKey(key) && FileNames.VideoExtensions.Contains(key![(key.LastIndexOf('.') + 1)..]);
 
     private static bool IsValidUploadId(string? uploadId) => uploadId is not null && PrintableToken().IsMatch(uploadId);
 
     private static Task<IResult> StartVideo(StartUploadRequest req, HttpContext context, IOptions<UploadOptions> options, IUploadStorage storage)
     {
         var o = options.Value;
-        var error = ValidateFile(req.FileName, req.Size, o.MaxVideoBytes, ["mp4", "m4v"], "Yalnızca .mp4 veya .m4v yüklenebilir");
+        var error = ValidateFile(req.FileName, req.Size, o.MaxVideoBytes, [.. FileNames.VideoExtensions], FileNames.VideoExtensionError);
         if (error is not null)
             return Task.FromResult(BadRequest(error));
 
@@ -134,7 +134,7 @@ public static partial class UploadEndpoints
 
         return Storage(context, "başlat", key, async () =>
         {
-            var uploadId = await storage.StartMultipart(key, "video/mp4", CacheControl, context.RequestAborted);
+            var uploadId = await storage.StartMultipart(key, FileNames.ContentTypeFor(FileNames.Extension(key)), CacheControl, context.RequestAborted);
             Logger(context).LogInformation("Video yükleme başladı: anahtar {KeyName}, dosya {ObjectKey}, boyut {Size}", KeyName(context), key, req.Size);
             return Results.Ok(new { key, uploadId, partSize = o.PartSizeBytes, partCount });
         });
