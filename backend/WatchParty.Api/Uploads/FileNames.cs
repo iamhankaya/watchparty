@@ -12,6 +12,14 @@ public static partial class FileNames
     // "videolar/" + 32 hex + "/" + ad (en fazla 80) + "." + uzantı (en fazla 3)
     public const int MaxKeyLength = 9 + 32 + 1 + MaxNameLength + 1 + 3;
 
+    /// <summary>Yüklenebilir video uzantıları (noktasız, küçük harf). Sözleşme: uç noktalara uygulama fazında bağlanır.</summary>
+    public static readonly IReadOnlyList<string> VideoExtensions = ["mp4", "m4v", "mkv"];
+
+    public const string VideoExtensionError = "Yalnızca .mp4, .m4v veya .mkv yüklenebilir";
+
+    public const string Mp4ContentType = "video/mp4";
+    public const string MatroskaContentType = "video/x-matroska";
+
     [GeneratedRegex(@"^videolar/[0-9a-f]{32}/[a-z0-9-]{1,80}\.(mp4|m4v|srt|vtt)\z")]
     private static partial Regex KeyPattern();
 
@@ -20,6 +28,10 @@ public static partial class FileNames
 
     /// <summary>İstemcinin gönderdiği dosya anahtarı bu sunucunun ürettiği biçimde mi.</summary>
     public static bool IsValidKey(string? key) => key is not null && KeyPattern().IsMatch(key);
+
+    /// <summary>Video uzantısına (noktasız, küçük harf) göre S3 içerik türü; sunucu belirler, istemci belirleyemez.</summary>
+    public static string ContentTypeFor(string extension) =>
+        throw new NotImplementedException("Uygulama fazında yazılacak (T20261029-23)");
 
     /// <summary>Küçük harfli uzantı (noktasız); yoksa boş.</summary>
     public static string Extension(string? fileName)

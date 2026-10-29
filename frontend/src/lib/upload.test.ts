@@ -6,6 +6,8 @@ import {
   uploadKeyProblem,
   uploadSubtitle,
   uploadVideo,
+  VIDEO_EXTENSION_ERROR,
+  VIDEO_EXTENSIONS,
   videoProblem,
   type UploadProgress,
 } from "./upload";
@@ -417,5 +419,12 @@ describe("uploadSubtitle", () => {
     const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) =>
       String(input) === "https://s3.test/sub" ? new Response(null, { status: 403 }) : base.fetchImpl(input, init)) as typeof fetch;
     await expect(uploadSubtitle(fakeFile("a.srt", 10), "k", { onProgress, fetchImpl })).rejects.toThrow(/Altyazı yüklenemedi/);
+  });
+});
+
+describe("video uzantı sözleşmesi", () => {
+  test("sunucudaki kümeyle aynı ve metin aynı", () => {
+    expect([...VIDEO_EXTENSIONS].sort()).toEqual(["m4v", "mkv", "mp4"]);
+    expect(VIDEO_EXTENSION_ERROR).toBe("Yalnızca .mp4, .m4v veya .mkv yüklenebilir");
   });
 });

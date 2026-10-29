@@ -11,6 +11,9 @@
 
 export const MAX_VIDEO_BYTES = 6_442_450_944; // 6 GB, sunucudaki Upload:MaxVideoBytes
 export const MAX_SUBTITLE_BYTES = 2_097_152; // 2 MB, sunucudaki Upload:MaxSubtitleBytes
+// Sunucudaki FileNames.VideoExtensions / VideoExtensionError ile aynı; videoProblem'e uygulama fazında bağlanır.
+export const VIDEO_EXTENSIONS = ["mp4", "m4v", "mkv"] as const;
+export const VIDEO_EXTENSION_ERROR = "Yalnızca .mp4, .m4v veya .mkv yüklenebilir";
 export const UPLOAD_KEY_STORAGE = "wp:uploadKey";
 
 const CONCURRENCY = 4;
