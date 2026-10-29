@@ -2,7 +2,7 @@
 
 Tarayıcıda (Chrome) çalmayan sesi — E-AC3, AC3, DTS, TrueHD — AAC'ye çevirir. Video akışına dokunulmaz (`-c:v copy`), yalnızca **ilk ses izi** AAC stereo 192k olur; sonuç `<ad>-aac.mp4` (`+faststart`) olarak yazılır. Orijinal dosya korunur. Ses zaten uyumluysa (AAC, sessiz) dosyaya dokunulmaz. Video H.264 değilse dosya atlanır (araç videoyu yeniden kodlamaz). Yalnızca yerelde çalışır, sunucuyla ilgisi yoktur.
 
-Çıktı zaten varsa asla ezilmez: süresi kaynakla eşleşiyorsa (aynı eşik: max 2 sn ya da %1) yeniden kullanılır (`atlandi`); eşleşmiyorsa ya da okunamıyorsa aynı adlı başka bir kaynağın çıktısı olabilir, hata verilir (silin ya da başka `--cikti` verin). `indir.py --dosya` da bunu izler.
+Çıktı zaten varsa asla ezilmez: süresi kaynakla iki yönlü eşleşiyorsa (±max 2 sn ya da %1) yeniden kullanılır (`atlandi`); eşleşmiyorsa, okunamıyorsa ya da kaynağın süresi bilinmiyorsa aynı adlı başka bir kaynağın çıktısı olabilir, hata verilir (silin ya da başka `--cikti` verin). `indir.py --dosya` da bunu izler ve ayrıca var olan çıktının sesini doğrular (converter CLI ses uyumunu denetlemez).
 
 ## Kurulum
 

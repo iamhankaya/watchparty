@@ -184,6 +184,19 @@ class GercekDosyaTestleri(unittest.TestCase):
         self.assertIn("--cikti", sonuc.mesaj)
         self.assertEqual(cikti.stat().st_size, boyut)
 
+    def test_kaynaktan_uzun_ayni_adli_cikti_hata(self):
+        (self.kok / "b").mkdir()
+        uzun = self._uret("film.mkv", "eac3", sure=8)
+        d.donustur_dosya(uzun, self.kok / "o", dry_run=False)
+        kisa = self.kok / "b" / "film.mkv"
+        subprocess.run(
+            ["ffmpeg", "-y", "-loglevel", "error",
+             "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=2",
+             "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "eac3", str(kisa)], check=True)
+        sonuc = d.donustur_dosya(kisa, self.kok / "o", dry_run=False)
+        self.assertEqual(sonuc.durum, "hata")
+
     def test_okunamayan_var_olan_cikti_hata(self):
         girdi = self._uret("film.mkv", "eac3")
         (self.kok / "film-aac.mp4").write_bytes(b"eski")
