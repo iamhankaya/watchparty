@@ -96,6 +96,7 @@ p { margin: 0 0 8px; }
 .muted { color: var(--muted); }
 .small { font-size: 0.85rem; }
 .error { color: var(--danger); margin: 12px 0 0; font-size: 0.9rem; }
+.warn { color: var(--warn); margin: 8px 0 0; }
 
 :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 

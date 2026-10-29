@@ -148,7 +148,7 @@ public class UploadMkvAcceptanceTests
             new { key = MkvKey, uploadId = "u1", parts = new[] { new { partNumber = 1, eTag = "\"a\"" }, new { partNumber = 2, eTag = "\"b\"" } } }));
         Assert.Equal($"https://cdn.example.net/{MkvKey}", done.GetProperty("url").GetString());
 
-        await Ok(await Post(c, "/api/uploads/video/abort", new { key = MkvKey, uploadId = "u1" }));
+        Assert.Equal(HttpStatusCode.NoContent, (await Post(c, "/api/uploads/video/abort", new { key = MkvKey, uploadId = "u1" })).StatusCode);
         Assert.Equal(
             [$"part {MkvKey} u1 1", $"part {MkvKey} u1 2", $"complete {MkvKey} u1", $"abort {MkvKey} u1"],
             f.Storage.Calls.ToArray());

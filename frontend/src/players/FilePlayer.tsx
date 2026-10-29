@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { decodeSubtitle, parseSubtitles, type Cue } from "../lib/subtitles";
 import type { Player } from "./Player";
+import { playbackMessage } from "./playbackFailure";
 
 interface Props {
   url: string;
@@ -65,7 +66,7 @@ export function FilePlayer({ url, subtitleUrl, subtitlesOn, onPlayer, onError }:
       },
     };
 
-    const handleError = () => onError("Video yüklenemedi. URL'nin doğrudan bir MP4 dosyasına gittiğinden emin olun.");
+    const handleError = () => onError(playbackMessage(video.error?.code, url));
     video.addEventListener("error", handleError);
     video.addEventListener("waiting", onWaiting);
     for (const e of resumeEvents) video.addEventListener(e, onResumed);

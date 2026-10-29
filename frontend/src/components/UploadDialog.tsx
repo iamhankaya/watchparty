@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { errorMessage } from "../lib/errors";
+import { audioWarning, readMatroskaTracks } from "../lib/matroska";
 import {
   UPLOAD_KEY_STORAGE,
   subtitleFileProblem,
@@ -81,6 +82,9 @@ export function UploadDialog({ canControl, onClose, onOpenInLobby }: Props) {
   const [video, setVideo] = useState<File | null>(null);
   const [subtitle, setSubtitle] = useState<File | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  // MKV seçilince başlıktan okunan ses uyarısı; yüklemeyi engellemez.
+  const [warning, setWarning] = useState<string | null>(null);
+  const inspectRef = useRef<AbortController | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "form" });
   const [opening, setOpening] = useState(false);
 
@@ -88,8 +92,24 @@ export function UploadDialog({ canControl, onClose, onOpenInLobby }: Props) {
     const d = dialogRef.current;
     if (d && !d.open) d.showModal();
     // Pencere kapanırken (bileşen kalkarken) süren yükleme iptal edilir.
-    return () => abortRef.current?.abort();
+    return () => {
+      abortRef.current?.abort();
+      inspectRef.current?.abort();
+    };
   }, []);
+
+  function pickVideo(file: File | null) {
+    inspectRef.current?.abort();
+    setVideo(file);
+    setWarning(null);
+    setProblem(null);
+    if (!file || !file.name.toLowerCase().endsWith(".mkv")) return;
+    const ctrl = new AbortController();
+    inspectRef.current = ctrl;
+    readMatroskaTracks(file, ctrl.signal)
+      .then((r) => setWarning(audioWarning(r)))
+      .catch(() => {}); // iptal: yeni dosya seçildi
+  }
 
   const uploading = phase.kind === "uploading";
 
@@ -104,7 +124,7 @@ export function UploadDialog({ canControl, onClose, onOpenInLobby }: Props) {
     if (!trimmedKey) return setProblem("Yükleme anahtarını gir");
     const keyProblem = uploadKeyProblem(trimmedKey);
     if (keyProblem) return setProblem(keyProblem);
-    if (!video) return setProblem("Bir MP4 dosyası seç");
+    if (!video) return setProblem("Bir video dosyası seç");
     const p = videoProblem(video) ?? (subtitle && subtitleFileProblem(subtitle));
     if (p) return setProblem(p);
 
@@ -217,15 +237,12 @@ export function UploadDialog({ canControl, onClose, onOpenInLobby }: Props) {
             <span>Bu tarayıcıda hatırla</span>
           </label>
           <label className="field">
-            <span>Video (MP4)</span>
+            <span>Video (MP4 / MKV)</span>
             <input
               type="file"
-              accept=".mp4,.m4v,video/mp4"
+              accept=".mp4,.m4v,.mkv,video/mp4,video/x-matroska"
               autoFocus={!!key}
-              onChange={(e) => {
-                setVideo(e.target.files?.[0] ?? null);
-                setProblem(null);
-              }}
+              onChange={(e) => pickVideo(e.target.files?.[0] ?? null)}
               disabled={uploading}
             />
           </label>
@@ -241,7 +258,11 @@ export function UploadDialog({ canControl, onClose, onOpenInLobby }: Props) {
               disabled={uploading}
             />
           </label>
-          <p className="muted small">En iyi sonuç için H.264 video ve AAC ses içeren MP4 kullanın.</p>
+          <p className="muted small">
+            En iyi sonuç için H.264 video ve AAC ses içeren MP4 kullanın. MKV her tarayıcıda oynamaz (Chrome/Edge en uyumlu,
+            Safari oynatmaz); MKV içindeki altyazı gösterilmez, ayrı .srt/.vtt ekleyin.
+          </p>
+          <div aria-live="polite">{warning && <p className="warn small">{warning}</p>}</div>
 
           {phase.kind === "uploading" && (
             <div className="upload-progress" aria-live="polite">

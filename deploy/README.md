@@ -95,7 +95,7 @@ Kontroller: `/api/health` 200, `/l/ABCDEF` HTML, `/api/lobbies/ZZZZZZ` 404, CSP 
 
 Anahtarı olan kişiler lobideki "Bilgisayardan yükle" düğmesiyle MP4 (+ isteğe bağlı altyazı) yükleyebilir. Dosya sunucudan geçmez: backend yükleme anahtarını (`X-Upload-Key`) doğrular ve S3'e kısa süreli (1 saat), dosyaya özel presigned URL'ler üretir; tarayıcı video bucket'ına doğrudan çok parçalı yükler (16 MB parça, 4 eşzamanlı).
 
-- **Sınırlar:** video en fazla 6 GB, `.mp4`/`.m4v`; altyazı en fazla 2 MB, `.srt`/`.vtt`.
+- **Sınırlar:** video en fazla 6 GB, `.mp4`/`.m4v`/`.mkv` (MKV dönüştürülmeden yüklenir); altyazı en fazla 2 MB, `.srt`/`.vtt`.
 - **Konum:** `videolar/<32 hex gizli klasör>/<temizlenmiş ad>` (video bucket'ı); link `https://<cloudfront>/videolar/...`. Yaşam döngüsü aynen geçerli: 30 gün sonra silinir, yarım yüklemeler 2 günde iptal edilir. Elle silmek için yukarıdaki "Videolar" notuna bakın.
 - **Yanlış anahtar:** IP başına 10 dakikada en fazla 10 başarısız deneme; sonrası 429.
 - **Genel sınırlar:** `/api/uploads/*` istek gövdesi en fazla 64 KB (aşan 413), IP başına dakikada en fazla `Security:UploadPerMinute` istek (varsayılan 120; aşan 429). İkisi de anahtar kontrolünden önce uygulanır.
