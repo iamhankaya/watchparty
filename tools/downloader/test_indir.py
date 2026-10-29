@@ -177,10 +177,10 @@ class S3Testleri(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg yok")
 class SesHazirlaTestleri(unittest.TestCase):
-    def _uret(self, yol, kodek):
+    def _uret(self, yol, kodek, sure=2):
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error",
-                        "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=2",
-                        "-f", "lavfi", "-i", "sine=duration=2",
+                        "-f", "lavfi", "-i", f"testsrc=size=160x120:rate=10:duration={sure}",
+                        "-f", "lavfi", "-i", f"sine=duration={sure}",
                         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", kodek, str(yol)], check=True)
 
     def test_eac3_aac_mp4ye_cevrilir_aac_dokunulmaz(self):
@@ -192,6 +192,24 @@ class SesHazirlaTestleri(unittest.TestCase):
             self.assertTrue((kok / "o" / "a-aac.mp4").is_file())
             self.assertEqual(ses_hazirla(kok / "b.mp4", kok / "o"), kok / "b.mp4")
             self.assertFalse((kok / "o" / "b-aac.mp4").exists())
+
+    def test_ayni_adli_baska_kaynagin_ciktisi_kullanilmaz(self):
+        with tempfile.TemporaryDirectory() as t:
+            kok = Path(t)
+            (kok / "b").mkdir()
+            self._uret(kok / "a.mkv", "eac3")
+            self._uret(kok / "b" / "a.mkv", "eac3", sure=8)
+            ses_hazirla(kok / "a.mkv", kok / "o")
+            with self.assertRaises(AracHatasi) as h:
+                ses_hazirla(kok / "b" / "a.mkv", kok / "o")
+            self.assertIn("--cikti", str(h.exception))
+
+    def test_ayni_kaynagin_var_olan_ciktisi_yeniden_kullanilir(self):
+        with tempfile.TemporaryDirectory() as t:
+            kok = Path(t)
+            self._uret(kok / "a.mkv", "eac3")
+            ilk = ses_hazirla(kok / "a.mkv", kok / "o")
+            self.assertEqual(ses_hazirla(kok / "a.mkv", kok / "o"), ilk)
 
 
 class ArgumanTestleri(unittest.TestCase):
