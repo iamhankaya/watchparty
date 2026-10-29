@@ -152,3 +152,23 @@ describe("audioWarning", () => {
     expect(w).toContain("yüklenebilir");
   });
 });
+
+describe("readString NUL kırpma", () => {
+  test("ilk NUL'dan sonrası atılır", async () => {
+    const r = await readMatroskaTracks(mkv(video, entry(2, 2, "A_AAC", [named("Türkçe\u0000\u0000")])));
+    expect(r.tracks[1].name).toBe("Türkçe");
+    const mid = await readMatroskaTracks(mkv(video, entry(2, 2, "A_AAC", [named("a\u0000b")])));
+    expect(mid.tracks[1].name).toBe("a");
+  });
+
+  // Eski /\0+$/ regex'i çok sayıda NUL + sondaki NUL olmayan bayt için ikinci dereceydi (F-watchparty-001);
+  // 100k NUL eskiden saniyeler sürüyordu, doğrusal kırpma milisaniye: geniş pay (2 sn) bırakıldı.
+  test("çok sayıda NUL + sonda NUL olmayan bayt hızlı çözülür", async () => {
+    const name = new Uint8Array(100_001);
+    name[100_000] = 0x78;
+    const t0 = performance.now();
+    const r = await readMatroskaTracks(mkv(video, entry(2, 2, "A_AAC", [el([0x53, 0x6e], name)])));
+    expect(performance.now() - t0).toBeLessThan(2000);
+    expect(r.tracks[1].name).toBe("");
+  });
+});
