@@ -36,10 +36,11 @@ python indir.py <url> --sadece-indir                                   # yüklem
 | `--maks-yukseklik` | | Daha yüksek çözünürlükleri küçültür |
 | `--crf` | | x264 kalitesi (varsayılan 23; küçük = daha kaliteli, daha büyük dosya) |
 | `--cikti` | | Yerel klasör, varsayılan `indirilenler` |
-| `--dosya` | | URL yerine hazır bir MP4'ü yükler (indirme ve dönüştürme yapılmaz) |
+| `--dosya` | | URL yerine hazır bir videoyu (MP4/MKV) yükler; indirme yapılmaz, yalnızca ses uyumsuzsa `--ses-donustur` uygulanır |
+| `--ses-donustur` | | `otomatik` (varsayılan) ya da `hayir`. `--dosya` için: ses E-AC3/AC3/DTS/TrueHD ise `<ad>-aac.mp4` üretilip o yüklenir, uyumluysa dosyaya dokunulmaz |
 | `--gizli` | | Anahtara tahmin edilemez bir klasör ekler; link bilinmeden dosya bulunamaz |
 
-Kaynak zaten H.264/AAC ise video yeniden kodlanmaz, sadece `faststart` ile kopyalanır (saniyeler sürer). Değilse x264 ile kodlanır; 1,5 saatlik bir film CPU'ya göre 15-60 dakika sürebilir.
+Dönüşüm planı üç türlüdür: kaynak zaten H.264/AAC ise video yeniden kodlanmaz, sadece `faststart` ile kopyalanır (saniyeler sürer); video uygun ama ses AAC değilse video aynen kopyalanır, yalnızca ses AAC stereo 192k'ya çevrilir (dakikalar); ikisi de uygun değilse x264 ile kodlanır, 1,5 saatlik bir film CPU'ya göre 15-60 dakika sürebilir. Ses dönüşümü [`tools/converter`](../converter/README.md) ile ortaktır (aynı argümanlar, aynı süre doğrulaması); dönüşüm sonrası çıktı süresi girdiyle karşılaştırılır, kesikse çıktı silinir ve girdi korunur. S3 `ContentType` uzantıya göre seçilir (`.mkv` → `video/x-matroska`, aksi `video/mp4`).
 
 Link CloudFront üzerinden verilmelidir: S3'ten doğrudan indirme hem daha pahalıdır hem de bucket'ın herkese açık olmasını gerektirir. WatchParty en fazla 200 karakterlik link kabul eder.
 
