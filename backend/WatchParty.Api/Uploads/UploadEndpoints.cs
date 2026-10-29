@@ -118,7 +118,7 @@ public static partial class UploadEndpoints
     }
 
     private static bool IsVideoKey(string? key) =>
-        FileNames.IsValidKey(key) && FileNames.VideoExtensions.Contains(key![(key.LastIndexOf('.') + 1)..]);
+        FileNames.IsValidKey(key) && FileNames.VideoExtensions.Contains(FileNames.Extension(key));
 
     private static bool IsValidUploadId(string? uploadId) => uploadId is not null && PrintableToken().IsMatch(uploadId);
 

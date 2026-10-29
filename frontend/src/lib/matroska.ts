@@ -77,6 +77,7 @@ function readVint(buf: Uint8Array, pos: number, isId: boolean): { value: number 
 
 /** `[start, end)` aralığındaki öğeleri sırayla verir; boyutu aralıktan taşan öğe Malformed (`lenient`: olduğu gibi verilir, tarama biter). */
 function* elements(buf: Uint8Array, start: number, end: number, lenient = false): Generator<Element> {
+  end = Math.min(end, buf.length); // taşan üst öğe (ör. SeekHead) tampon dışını okutmasın
   let pos = start;
   for (let n = 0; pos < end && n < MAX_ELEMENTS; n++) {
     const id = readVint(buf, pos, true);
