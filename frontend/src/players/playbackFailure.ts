@@ -15,7 +15,25 @@ export const FAILURE_MESSAGES: Record<PlaybackFailureKind, string> = {
   decode: "Video çözümlenemedi; dosya bozuk veya codec/profil uyumsuz olabilir.",
 };
 
+export const MKV_HINT = "MKV desteği tarayıcıya bağlıdır: Chrome/Edge çoğu MKV'yi oynatır, Firefox kısıtlıdır, Safari oynatmaz.";
+
+/** Oynatma hatasının izleyiciye gösterilecek metni; MKV bağlantısında tarayıcı ipucu eklenir. Bilinmeyen kod "network" sayılır. */
+export function playbackMessage(code: number | undefined, url: string): string {
+  const kind = classifyMediaError(code) ?? "network";
+  const isMkv = /\.mkv$/i.test(url.split(/[?#]/)[0]);
+  return isMkv && kind !== "network" ? `${FAILURE_MESSAGES[kind]} ${MKV_HINT}` : FAILURE_MESSAGES[kind];
+}
+
 /** `MediaError.code`'u türe çevirir: 2 network, 3 decode, 4 unsupported; 1 (aborted) ve bilinmeyen null. */
-export function classifyMediaError(_code: number | undefined): PlaybackFailureKind | null {
-  throw new Error("Uygulama fazında yazılacak (T20261029-23)");
+export function classifyMediaError(code: number | undefined): PlaybackFailureKind | null {
+  switch (code) {
+    case 2:
+      return "network";
+    case 3:
+      return "decode";
+    case 4:
+      return "unsupported";
+    default:
+      return null;
+  }
 }

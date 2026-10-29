@@ -112,8 +112,14 @@ describe("videoProblem", () => {
   });
   test("0 bayt ve yanlış uzantı", () => {
     expect(videoProblem(fakeFile("a.mp4", 0))).toBe("Dosya boş");
-    expect(videoProblem(fakeFile("a.mkv", 10))).toBe("Yalnızca .mp4 veya .m4v yüklenebilir");
+    expect(videoProblem(fakeFile("a.avi", 10))).toBe(VIDEO_EXTENSION_ERROR);
+    expect(videoProblem(fakeFile("a.mkv.exe", 10))).toBe(VIDEO_EXTENSION_ERROR);
     expect(videoProblem(fakeFile("A.M4V", 10))).toBeNull();
+  });
+  test("mkv kabul edilir, boyut sınırı mkv için de geçerli", () => {
+    expect(videoProblem(fakeFile("film.MKV", 10))).toBeNull();
+    expect(videoProblem(fakeFile("a.mkv", MAX_VIDEO_BYTES + 1))).toBe("Dosya çok büyük");
+    expect(videoProblem(fakeFile("a.mkv", 0))).toBe("Dosya boş");
   });
 });
 
