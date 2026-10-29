@@ -80,6 +80,13 @@ def sure_yeterli_mi(girdi_sure: float | None, cikti_sure: float | None) -> bool:
     return cikti_sure >= girdi_sure - max(SURE_PAYI_SN, girdi_sure * SURE_PAYI_ORAN)
 
 
+def sure_eslesiyor_mu(girdi_sure: float | None, var_sure: float | None) -> bool:
+    """Var olan çıktı bu kaynaktan mı? İki yönlü: kısa da uzun da başka kaynaktır; süre doğrulanamıyorsa hayır."""
+    if not girdi_sure or not var_sure:
+        return False
+    return abs(var_sure - girdi_sure) <= max(SURE_PAYI_SN, girdi_sure * SURE_PAYI_ORAN)
+
+
 def cikti_yolu(girdi: Path, cikti_dizini: Path | None) -> Path:
     return (cikti_dizini or girdi.parent) / f"{girdi.stem}{SONEK}.mp4"
 
@@ -123,6 +130,14 @@ def donustur_dosya(girdi: Path, cikti_dizini: Path | None, dry_run: bool) -> Son
         return Sonuc(girdi, "dokunulmadi", neden)
     cikti = cikti_yolu(girdi, cikti_dizini)
     if cikti.exists():
+        # Aynı adlı başka kaynağın çıktısı olabilir: süre eşleşmiyorsa yeniden kullanma.
+        try:
+            _, var_sure = probe(cikti)
+        except DonusturucuHatasi:
+            var_sure = None
+        if not sure_eslesiyor_mu(girdi_sure, var_sure):
+            return Sonuc(girdi, "hata",
+                         f"{cikti.name} zaten var ama bu kaynağın çıktısı görünmüyor (süre uyuşmuyor ya da okunamadı); silin ya da başka --cikti verin.")
         return Sonuc(girdi, "atlandi", f"{cikti.name} zaten var, ezilmedi")
     if dry_run:
         return Sonuc(girdi, "donusturulecek", f"{neden}; yazılacak: {cikti}", cikti)

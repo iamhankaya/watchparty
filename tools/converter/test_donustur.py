@@ -157,11 +157,51 @@ class GercekDosyaTestleri(unittest.TestCase):
         self.assertEqual(sonuc.durum, "dokunulmadi")
         self.assertFalse((self.kok / "film-aac.mp4").exists())
 
-    def test_var_olan_cikti_ezilmez(self):
+    def test_ayni_kaynaktan_var_olan_cikti_yeniden_kullanilir(self):
+        girdi = self._uret("film.mkv", "eac3")
+        self.assertEqual(d.donustur_dosya(girdi, None, dry_run=False).durum, "donusturuldu")
+        cikti = self.kok / "film-aac.mp4"
+        boyut = cikti.stat().st_size
+        sonuc = d.donustur_dosya(girdi, None, dry_run=False)
+        self.assertEqual(sonuc.durum, "atlandi")
+        self.assertEqual(cikti.stat().st_size, boyut)
+
+    def test_farkli_sureli_ayni_adli_cikti_hata_ve_ezilmez(self):
+        # F-watchparty-009: başka klasördeki aynı adlı kaynağın çıktısı sessizce kullanılmasın.
+        a = self._uret("film.mkv", "eac3", sure=2)
+        d.donustur_dosya(a, self.kok / "o", dry_run=False)
+        (self.kok / "b").mkdir()
+        b = self.kok / "b" / "film.mkv"
+        subprocess.run(
+            ["ffmpeg", "-y", "-loglevel", "error",
+             "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=8",
+             "-f", "lavfi", "-i", "sine=frequency=440:duration=8",
+             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "eac3", str(b)], check=True)
+        cikti = self.kok / "o" / "film-aac.mp4"
+        boyut = cikti.stat().st_size
+        sonuc = d.donustur_dosya(b, self.kok / "o", dry_run=False)
+        self.assertEqual(sonuc.durum, "hata")
+        self.assertIn("--cikti", sonuc.mesaj)
+        self.assertEqual(cikti.stat().st_size, boyut)
+
+    def test_kaynaktan_uzun_ayni_adli_cikti_hata(self):
+        (self.kok / "b").mkdir()
+        uzun = self._uret("film.mkv", "eac3", sure=8)
+        d.donustur_dosya(uzun, self.kok / "o", dry_run=False)
+        kisa = self.kok / "b" / "film.mkv"
+        subprocess.run(
+            ["ffmpeg", "-y", "-loglevel", "error",
+             "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=2",
+             "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "eac3", str(kisa)], check=True)
+        sonuc = d.donustur_dosya(kisa, self.kok / "o", dry_run=False)
+        self.assertEqual(sonuc.durum, "hata")
+
+    def test_okunamayan_var_olan_cikti_hata(self):
         girdi = self._uret("film.mkv", "eac3")
         (self.kok / "film-aac.mp4").write_bytes(b"eski")
         sonuc = d.donustur_dosya(girdi, None, dry_run=False)
-        self.assertEqual(sonuc.durum, "atlandi")
+        self.assertEqual(sonuc.durum, "hata")
         self.assertEqual((self.kok / "film-aac.mp4").read_bytes(), b"eski")
 
     def test_kesik_cikti_silinir(self):
