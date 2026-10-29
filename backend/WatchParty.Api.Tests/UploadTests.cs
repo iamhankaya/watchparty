@@ -189,6 +189,30 @@ public class UploadTests
         Assert.Equal([$"start {key}"], f.Storage.Calls);
     }
 
+    [Theory]
+    [InlineData("Film.MKV", "video/x-matroska")]
+    [InlineData("a.mp4", "video/mp4")]
+    [InlineData("a.m4v", "video/mp4")]
+    public async Task Video_content_type_is_chosen_by_server_from_extension(string fileName, string contentType)
+    {
+        using var f = new UploadFactory(Settings());
+        using var c = f.CreateClient();
+        await Json(await Post(c, "/api/uploads/video", new { fileName, size = 1 }));
+        Assert.Equal(contentType, f.Storage.LastContentType);
+    }
+
+    [Theory]
+    [InlineData("a.mkv.exe")]
+    [InlineData("mkv")]
+    [InlineData("a.mkvx")]
+    public async Task Mkv_lookalike_names_are_rejected(string fileName)
+    {
+        using var f = new UploadFactory(Settings());
+        using var c = f.CreateClient();
+        await AssertError(await Post(c, "/api/uploads/video", new { fileName, size = 10 }), HttpStatusCode.BadRequest, "Yalnızca .mp4, .m4v veya .mkv yüklenebilir");
+        Assert.Empty(f.Storage.Calls);
+    }
+
     [Fact]
     public async Task Second_key_with_uppercase_hash_also_works()
     {
@@ -295,10 +319,10 @@ public class UploadTests
     [InlineData("a.mp4", 6_442_450_945L, "Dosya çok büyük")]
     [InlineData("a.mp4", 0L, "Dosya boş")]
     [InlineData("a.mp4", -5L, "Dosya boş")]
-    [InlineData("a.avi", 10L, "Yalnızca .mp4 veya .m4v yüklenebilir")]
-    [InlineData("mp4", 10L, "Yalnızca .mp4 veya .m4v yüklenebilir")]
-    [InlineData("a.srt", 10L, "Yalnızca .mp4 veya .m4v yüklenebilir")]
-    [InlineData(null, 10L, "Yalnızca .mp4 veya .m4v yüklenebilir")]
+    [InlineData("a.avi", 10L, "Yalnızca .mp4, .m4v veya .mkv yüklenebilir")]
+    [InlineData("mp4", 10L, "Yalnızca .mp4, .m4v veya .mkv yüklenebilir")]
+    [InlineData("a.srt", 10L, "Yalnızca .mp4, .m4v veya .mkv yüklenebilir")]
+    [InlineData(null, 10L, "Yalnızca .mp4, .m4v veya .mkv yüklenebilir")]
     public async Task Video_validation_errors(string? fileName, long size, string error)
     {
         using var f = new UploadFactory(Settings());

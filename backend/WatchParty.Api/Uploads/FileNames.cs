@@ -12,7 +12,15 @@ public static partial class FileNames
     // "videolar/" + 32 hex + "/" + ad (en fazla 80) + "." + uzantı (en fazla 3)
     public const int MaxKeyLength = 9 + 32 + 1 + MaxNameLength + 1 + 3;
 
-    [GeneratedRegex(@"^videolar/[0-9a-f]{32}/[a-z0-9-]{1,80}\.(mp4|m4v|srt|vtt)\z")]
+    /// <summary>Yüklenebilir video uzantıları (noktasız, küçük harf). Uç noktalar ve istemci aynı kümeyi kullanır.</summary>
+    public static readonly IReadOnlyList<string> VideoExtensions = ["mp4", "m4v", "mkv"];
+
+    public const string VideoExtensionError = "Yalnızca .mp4, .m4v veya .mkv yüklenebilir";
+
+    public const string Mp4ContentType = "video/mp4";
+    public const string MatroskaContentType = "video/x-matroska";
+
+    [GeneratedRegex(@"^videolar/[0-9a-f]{32}/[a-z0-9-]{1,80}\.(mp4|m4v|mkv|srt|vtt)\z")]
     private static partial Regex KeyPattern();
 
     [GeneratedRegex("[^a-z0-9]+")]
@@ -20,6 +28,18 @@ public static partial class FileNames
 
     /// <summary>İstemcinin gönderdiği dosya anahtarı bu sunucunun ürettiği biçimde mi.</summary>
     public static bool IsValidKey(string? key) => key is not null && KeyPattern().IsMatch(key);
+
+    /// <summary>
+    /// Video uzantısına (noktasız, küçük harf) göre S3 içerik türü; sunucu belirler, istemci belirleyemez.
+    /// mp4/m4v → <see cref="Mp4ContentType"/>, mkv → <see cref="MatroskaContentType"/>; başka her girdi
+    /// (büyük harf, noktalı, null, srt/avi) <see cref="ArgumentException"/> fırlatır, sessizce mp4 dönmez.
+    /// </summary>
+    public static string ContentTypeFor(string extension) => extension switch
+    {
+        "mp4" or "m4v" => Mp4ContentType,
+        "mkv" => MatroskaContentType,
+        _ => throw new ArgumentException($"Video uzantısı değil: {extension}", nameof(extension)),
+    };
 
     /// <summary>Küçük harfli uzantı (noktasız); yoksa boş.</summary>
     public static string Extension(string? fileName)

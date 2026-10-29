@@ -6,6 +6,8 @@ import {
   uploadKeyProblem,
   uploadSubtitle,
   uploadVideo,
+  VIDEO_EXTENSION_ERROR,
+  VIDEO_EXTENSIONS,
   videoProblem,
   type UploadProgress,
 } from "./upload";
@@ -110,8 +112,14 @@ describe("videoProblem", () => {
   });
   test("0 bayt ve yanlış uzantı", () => {
     expect(videoProblem(fakeFile("a.mp4", 0))).toBe("Dosya boş");
-    expect(videoProblem(fakeFile("a.mkv", 10))).toBe("Yalnızca .mp4 veya .m4v yüklenebilir");
+    expect(videoProblem(fakeFile("a.avi", 10))).toBe(VIDEO_EXTENSION_ERROR);
+    expect(videoProblem(fakeFile("a.mkv.exe", 10))).toBe(VIDEO_EXTENSION_ERROR);
     expect(videoProblem(fakeFile("A.M4V", 10))).toBeNull();
+  });
+  test("mkv kabul edilir, boyut sınırı mkv için de geçerli", () => {
+    expect(videoProblem(fakeFile("film.MKV", 10))).toBeNull();
+    expect(videoProblem(fakeFile("a.mkv", MAX_VIDEO_BYTES + 1))).toBe("Dosya çok büyük");
+    expect(videoProblem(fakeFile("a.mkv", 0))).toBe("Dosya boş");
   });
 });
 
@@ -417,5 +425,12 @@ describe("uploadSubtitle", () => {
     const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) =>
       String(input) === "https://s3.test/sub" ? new Response(null, { status: 403 }) : base.fetchImpl(input, init)) as typeof fetch;
     await expect(uploadSubtitle(fakeFile("a.srt", 10), "k", { onProgress, fetchImpl })).rejects.toThrow(/Altyazı yüklenemedi/);
+  });
+});
+
+describe("video uzantı sözleşmesi", () => {
+  test("sunucudaki kümeyle aynı ve metin aynı", () => {
+    expect([...VIDEO_EXTENSIONS].sort()).toEqual(["m4v", "mkv", "mp4"]);
+    expect(VIDEO_EXTENSION_ERROR).toBe("Yalnızca .mp4, .m4v veya .mkv yüklenebilir");
   });
 });
