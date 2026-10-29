@@ -79,3 +79,6 @@ jobs:
       - name: İndirme aracı testleri
         working-directory: tools/downloader
         run: python -m unittest
+      - name: Ses dönüştürücü testleri
+        working-directory: tools/converter
+        run: python -m unittest
