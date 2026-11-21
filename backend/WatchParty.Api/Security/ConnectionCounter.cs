@@ -19,6 +19,13 @@ public class ConnectionCounter
         }
     }
 
+    // Tüm IP'lerdeki eşzamanlı hub bağlantısı sayısı (iç ölçüm için).
+    public int Total()
+    {
+        lock (_gate)
+            return _counts.Values.Sum();
+    }
+
     public void Release(string ip)
     {
         lock (_gate)
