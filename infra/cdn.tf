@@ -1,6 +1,7 @@
 locals {
   s3_origin_id     = "s3"
   api_origin_id    = "api"
+  spc_origin_id    = "spc"
   videos_origin_id = "videos"
 
   # connect-src: tarayıcıdan yüklemede presigned PUT video bucket'ının bölgesel adresine gider.
@@ -102,6 +103,19 @@ resource "aws_cloudfront_distribution" "main" {
     }
   }
 
+  # spc izleme ajanı: aynı EC2, :8080, HTTP. Gizli header yok; tek kapı ajanın Bearer belirteci.
+  origin {
+    origin_id   = local.spc_origin_id
+    domain_name = aws_eip.api.public_dns
+
+    custom_origin_config {
+      http_port              = 8080
+      https_port             = 443
+      origin_protocol_policy = "http-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
   default_cache_behavior {
     target_origin_id           = local.s3_origin_id
     allowed_methods            = ["GET", "HEAD"]
@@ -150,6 +164,17 @@ resource "aws_cloudfront_distribution" "main" {
     compress                   = false
     cache_policy_id            = aws_cloudfront_cache_policy.videos.id
     response_headers_policy_id = aws_cloudfront_response_headers_policy.security.id
+  }
+
+  # spc izleme API'si: önbelleksiz, yalnız okuma yöntemleri, yalnız HTTPS.
+  ordered_cache_behavior {
+    path_pattern             = "/spc/v1/*"
+    target_origin_id         = local.spc_origin_id
+    allowed_methods          = ["GET", "HEAD", "OPTIONS"]
+    cached_methods           = ["GET", "HEAD"]
+    viewer_protocol_policy   = "https-only"
+    cache_policy_id          = data.aws_cloudfront_cache_policy.caching_disabled.id
+    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer_except_host.id
   }
 
   restrictions {
