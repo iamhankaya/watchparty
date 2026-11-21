@@ -31,6 +31,14 @@ resource "aws_security_group" "api" {
     prefix_list_ids = [data.aws_ec2_managed_prefix_list.cloudfront.id]
   }
 
+  ingress {
+    description     = "CloudFront origin-facing spc izleme ajani"
+    from_port       = 8080
+    to_port         = 8080
+    protocol        = "tcp"
+    prefix_list_ids = [data.aws_ec2_managed_prefix_list.cloudfront.id]
+  }
+
   egress {
     description = "Tum cikis"
     from_port   = 0
