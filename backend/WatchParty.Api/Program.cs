@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
 using WatchParty.Api.Lobbies;
+using WatchParty.Api.Metrics;
 using WatchParty.Api.Security;
 using WatchParty.Api.Uploads;
 
@@ -20,6 +21,7 @@ builder.Services.AddHttpRateLimits();
 builder.Services.AddSingleton<ILobbyStore, InMemoryLobbyStore>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ConnectionCounter>();
+builder.Services.AddSingleton<ProductMetrics>();
 builder.Services.AddSignalR(o => o.AddFilter<HubRateLimitFilter>());
 builder.Services.AddHostedService<LobbyCleanupService>();
 builder.Services.AddHostedService<LobbyTickService>();
@@ -58,12 +60,13 @@ app.MapGet("/api/health", () => new
     serverTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
 });
 
-app.MapPost("/api/lobbies", (CreateLobbyRequest req, ILobbyStore store) =>
+app.MapPost("/api/lobbies", (CreateLobbyRequest req, ILobbyStore store, ProductMetrics metrics) =>
 {
     if (string.IsNullOrWhiteSpace(req.ClientId) || req.ClientId.Length > 100)
         return Results.BadRequest(new { error = "Geçersiz clientId" });
 
     var lobby = store.Create(req.ClientId, req.HostOnlyControl);
+    metrics.RecordLobbyCreated();
     return Results.Created($"/api/lobbies/{lobby.Code}", new { code = lobby.Code });
 }).RequireRateLimiting(HttpRateLimits.CreateLobby);
 
@@ -86,6 +89,9 @@ app.MapGet("/api/lobbies/{code}", (string code, ILobbyStore store) =>
 app.MapHub<LobbyHub>("/hubs/lobby");
 
 app.MapUploadEndpoints();
+
+// Yalnız loopback (spc ajanı); CloudFront'ta /internal/* davranışı yok.
+app.MapInternalMetrics();
 
 app.Run();
 

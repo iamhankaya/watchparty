@@ -1,9 +1,10 @@
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
+using WatchParty.Api.Metrics;
 
 namespace WatchParty.Api.Lobbies;
 
-public class LobbyHub(ILobbyStore store, IOptions<VoiceOptions> voiceOptions) : Hub
+public class LobbyHub(ILobbyStore store, IOptions<VoiceOptions> voiceOptions, ProductMetrics metrics) : Hub
 {
     private const int MaxNicknameLength = 30;
     private const int MaxChatLength = 500;
@@ -34,6 +35,7 @@ public class LobbyHub(ILobbyStore store, IOptions<VoiceOptions> voiceOptions) : 
 
         Context.Items["lobbyCode"] = lobby.Code;
         Context.Items["clientId"] = clientId;
+        metrics.RecordJoin(clientId);
 
         await Groups.AddToGroupAsync(Context.ConnectionId, lobby.Code);
         await LobbyEvents.SendParticipants(Clients, lobby);
