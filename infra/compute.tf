@@ -31,20 +31,29 @@ resource "aws_security_group" "api" {
     prefix_list_ids = [data.aws_ec2_managed_prefix_list.cloudfront.id]
   }
 
-  ingress {
-    description     = "CloudFront origin-facing spc izleme ajani"
-    from_port       = 8080
-    to_port         = 8080
-    protocol        = "tcp"
-    prefix_list_ids = [data.aws_ec2_managed_prefix_list.cloudfront.id]
-  }
-
   egress {
     description = "Tum cikis"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# spc izleme ajani (tcp/8080) ayri SG'de: CloudFront on-ek listesi SG kural kotasinda
+# cok yer tuttugundan ikinci pl kurali api SG'ye sigmiyor (RulesPerSecurityGroupLimitExceeded).
+# Cikis api SG'den gelir (SG'ler toplanir); port araligi genisletilmez.
+resource "aws_security_group" "spc" {
+  name        = "${var.project}-spc"
+  description = "WatchParty spc izleme ajani: yalnizca CloudFront origin-facing tcp/8080"
+  vpc_id      = data.aws_vpc.default.id
+
+  ingress {
+    description     = "CloudFront origin-facing spc izleme ajani"
+    from_port       = 8080
+    to_port         = 8080
+    protocol        = "tcp"
+    prefix_list_ids = [data.aws_ec2_managed_prefix_list.cloudfront.id]
   }
 }
 
@@ -69,11 +78,15 @@ resource "aws_iam_role_policy_attachment" "ssm" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-# Deploy sırasında instance backend paketini deploy bucket'ından indirir.
+# Deploy sırasında instance backend paketini deploy bucket'ından indirir;
+# spc ajan kurulumu (spc-install.sh + node tarball) spc-agent/ altından okunur (yalnız GetObject).
 data "aws_iam_policy_document" "deploy_read" {
   statement {
-    actions   = ["s3:GetObject"]
-    resources = ["${aws_s3_bucket.deploy.arn}/backend/*"]
+    actions = ["s3:GetObject"]
+    resources = [
+      "${aws_s3_bucket.deploy.arn}/backend/*",
+      "${aws_s3_bucket.deploy.arn}/spc-agent/*",
+    ]
   }
 }
 
@@ -121,7 +134,7 @@ resource "aws_instance" "api" {
   ami                    = data.aws_ssm_parameter.al2023_arm64.value
   instance_type          = var.instance_type
   iam_instance_profile   = aws_iam_instance_profile.api.name
-  vpc_security_group_ids = [aws_security_group.api.id]
+  vpc_security_group_ids = [aws_security_group.api.id, aws_security_group.spc.id]
 
   metadata_options {
     http_tokens = "required"
