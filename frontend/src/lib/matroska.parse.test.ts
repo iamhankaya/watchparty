@@ -171,6 +171,11 @@ describe("F-watchparty-006: bilinmeyen codec ve okuma hatası", () => {
     expect(w).not.toContain("doğrulanamadı");
   });
 
+  test("CodecID'siz ses izi çok-iz listesinde boş parantez üretmez", async () => {
+    const w = audioWarning(await readMatroskaTracks(mkv(video, entry(2, 2, "A_AAC"), entry(3, 2, ""))))!;
+    expect(w).not.toContain("()");
+  });
+
   test("mkvAudioWarning: dosya okunamazsa (I/O hatası) engellemeyen bilgi metni döner, yutmaz", async () => {
     const broken = { slice: () => ({ arrayBuffer: () => Promise.reject(new Error("NotReadableError")) }), size: 10 } as unknown as Blob;
     expect(await mkvAudioWarning(broken)).toBe(MKV_UNREADABLE_MESSAGE);

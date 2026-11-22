@@ -226,7 +226,7 @@ const CODEC_LABELS: [RegExp, string][] = [
   [/^A_DTS/, "DTS"],
   [/^A_TRUEHD/, "TrueHD"],
 ];
-const codecLabel = (codecId: string) => CODEC_LABELS.find(([re]) => re.test(codecId))?.[1] ?? codecId;
+const codecLabel = (codecId: string) => CODEC_LABELS.find(([re]) => re.test(codecId))?.[1] || codecId || "bilinmeyen codec";
 const trackLabel = (t: MkvTrack) => `${t.name || t.language || `iz ${t.number}`} (${codecLabel(t.codecId)})`;
 
 /**
@@ -241,7 +241,7 @@ export function audioWarning(inspection: MkvInspection): string | null {
   if (audio[0].audio === "unsupported")
     parts.push(`Bu dosyanın sesi tarayıcıda çalmayabilir (${codecLabel(audio[0].codecId)}).`);
   else if (audio[0].audio === "unknown")
-    parts.push(`İlk ses izinin uyumluluğu doğrulanamadı (${codecLabel(audio[0].codecId) || "bilinmeyen codec"}); dosya yine de yüklenebilir.`);
+    parts.push(`İlk ses izinin uyumluluğu doğrulanamadı (${codecLabel(audio[0].codecId)}); dosya yine de yüklenebilir.`);
   if (audio.length > 1)
     parts.push(`Birden çok ses izi var; tarayıcı ilk sesi çalar (izlerde: ${audio.map(trackLabel).join(", ")}).`);
   return parts.length ? parts.join(" ") : null;
