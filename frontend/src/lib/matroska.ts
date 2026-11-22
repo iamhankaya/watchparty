@@ -202,6 +202,19 @@ export async function readMatroskaTracks(file: Blob, signal?: AbortSignal): Prom
   }
 }
 
+/**
+ * `readMatroskaTracks` + `audioWarning`; beklenmeyen okuma hatasını (ör. dosya okunamadı) yutmaz,
+ * "doğrulanamadı" metnine çevirir. Yalnız iptal (`AbortError`) reject eder.
+ */
+export async function mkvAudioWarning(file: Blob, signal?: AbortSignal): Promise<string | null> {
+  try {
+    return audioWarning(await readMatroskaTracks(file, signal));
+  } catch (e) {
+    if (signal?.aborted || (e as { name?: string })?.name === "AbortError") throw e;
+    return MKV_UNREADABLE_MESSAGE;
+  }
+}
+
 const CODEC_LABELS: [RegExp, string][] = [
   [/^A_AAC/, "AAC"],
   [/^A_OPUS/, "Opus"],
@@ -227,6 +240,8 @@ export function audioWarning(inspection: MkvInspection): string | null {
   const parts: string[] = [];
   if (audio[0].audio === "unsupported")
     parts.push(`Bu dosyanın sesi tarayıcıda çalmayabilir (${codecLabel(audio[0].codecId)}).`);
+  else if (audio[0].audio === "unknown")
+    parts.push(`İlk ses izinin uyumluluğu doğrulanamadı (${codecLabel(audio[0].codecId) || "bilinmeyen codec"}); dosya yine de yüklenebilir.`);
   if (audio.length > 1)
     parts.push(`Birden çok ses izi var; tarayıcı ilk sesi çalar (izlerde: ${audio.map(trackLabel).join(", ")}).`);
   return parts.length ? parts.join(" ") : null;

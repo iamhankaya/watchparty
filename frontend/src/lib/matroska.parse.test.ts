@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { audioWarning, MKV_HEADER_BYTES, readMatroskaTracks } from "./matroska";
+import { audioWarning, MKV_HEADER_BYTES, MKV_UNREADABLE_MESSAGE, mkvAudioWarning, readMatroskaTracks } from "./matroska";
 
 // Sentetik EBML ile ayrıştırıcı testleri (gerçek ffmpeg çıktısı değil; yalnız Tracks yapısı).
 const bytes = (...n: number[]) => Uint8Array.from(n);
@@ -150,6 +150,40 @@ describe("audioWarning", () => {
     const w = audioWarning({ status: "unreadable", tracks: [] })!;
     expect(w).toContain("Uyumluluk doğrulanamadı");
     expect(w).toContain("yüklenebilir");
+  });
+});
+
+describe("F-watchparty-006: bilinmeyen codec ve okuma hatası", () => {
+  test("ilk ses izi bilinmeyen codec (MP2, ALAC): uyarı 'doğrulanamadı' der, codec adını verir", async () => {
+    for (const codec of ["A_MPEG/L2", "A_ALAC"]) {
+      const r = await readMatroskaTracks(mkv(video, entry(2, 2, codec)));
+      expect(r.tracks[1].audio).toBe("unknown");
+      const w = audioWarning(r)!;
+      expect(w).toContain("doğrulanamadı");
+      expect(w).toContain(codec);
+      expect(w).not.toContain("çalmayabilir");
+    }
+  });
+
+  test("bilinmeyen codec yalnız ikinci izdeyse tek uyarı çok-iz uyarısıdır", async () => {
+    const w = audioWarning(await readMatroskaTracks(mkv(video, entry(2, 2, "A_AAC"), entry(3, 2, "A_ALAC"))))!;
+    expect(w).toContain("ilk sesi çalar");
+    expect(w).not.toContain("doğrulanamadı");
+  });
+
+  test("mkvAudioWarning: dosya okunamazsa (I/O hatası) engellemeyen bilgi metni döner, yutmaz", async () => {
+    const broken = { slice: () => ({ arrayBuffer: () => Promise.reject(new Error("NotReadableError")) }), size: 10 } as unknown as Blob;
+    expect(await mkvAudioWarning(broken)).toBe(MKV_UNREADABLE_MESSAGE);
+  });
+
+  test("mkvAudioWarning: iptal AbortError ile reject eder", async () => {
+    const ctrl = new AbortController();
+    ctrl.abort();
+    await expect(mkvAudioWarning(mkv(video, entry(2, 2, "A_AAC")), ctrl.signal)).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  test("mkvAudioWarning: sağlıklı dosyada audioWarning ile aynı sonucu verir", async () => {
+    expect(await mkvAudioWarning(mkv(video, entry(2, 2, "A_AC3")))).toContain("çalmayabilir (AC3)");
   });
 });
 
