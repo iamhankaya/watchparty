@@ -40,6 +40,54 @@ class PlanTestleri(unittest.TestCase):
         self.assertEqual(d.plan([ses("eac3")])[0], "atla")
 
 
+class CiktiUyumTestleri(unittest.TestCase):
+    """F-watchparty-011: var olan çıktı yalnız süreyle değil ses/video uyumuyla da denetlenir."""
+
+    def test_h264_aac_uyumlu(self):
+        self.assertTrue(d.cikti_uyumlu_mu([H264, ses("aac")]))
+
+    def test_uyumsuz_ses_uyumsuz(self):
+        for kodek in ("ac3", "eac3", "dts", "truehd"):
+            self.assertFalse(d.cikti_uyumlu_mu([H264, ses(kodek)]), kodek)
+
+    def test_aac_disi_ses_uyumsuz(self):
+        self.assertFalse(d.cikti_uyumlu_mu([H264, ses("mp2")]))
+
+    def test_sessiz_cikti_uyumsuz(self):
+        self.assertFalse(d.cikti_uyumlu_mu([H264]))
+
+    def test_h264_olmayan_video_uyumsuz(self):
+        self.assertFalse(d.cikti_uyumlu_mu([{**H264, "codec_name": "hevc"}, ses("aac")]))
+
+    def test_var_olan_cikti_sesi_uyumsuzsa_hata_ve_ezilmez(self):
+        # Süre eşleşse bile (yarım kalmış/başka araçtan gelen) E-AC3'lü çıktı "atlandi" sayılmaz.
+        with tempfile.TemporaryDirectory() as t:
+            kok = Path(t)
+            girdi, cikti = kok / "film.mkv", kok / "film-aac.mp4"
+            girdi.write_bytes(b"g")
+            cikti.write_bytes(b"eski")
+            akis = {girdi: ([H264, ses("eac3")], 100.0), cikti: ([H264, ses("eac3")], 100.0)}
+            eski = d.probe
+            d.probe = lambda yol: akis[yol]
+            self.addCleanup(setattr, d, "probe", eski)
+            sonuc = d.donustur_dosya(girdi, None, dry_run=False)
+            self.assertEqual(sonuc.durum, "hata")
+            self.assertIn("ses", sonuc.mesaj)
+            self.assertEqual(cikti.read_bytes(), b"eski")
+
+    def test_var_olan_uyumlu_cikti_atlanir(self):
+        with tempfile.TemporaryDirectory() as t:
+            kok = Path(t)
+            girdi, cikti = kok / "film.mkv", kok / "film-aac.mp4"
+            girdi.write_bytes(b"g")
+            cikti.write_bytes(b"eski")
+            akis = {girdi: ([H264, ses("eac3")], 100.0), cikti: ([H264, ses("aac")], 100.0)}
+            eski = d.probe
+            d.probe = lambda yol: akis[yol]
+            self.addCleanup(setattr, d, "probe", eski)
+            self.assertEqual(d.donustur_dosya(girdi, None, dry_run=False).durum, "atlandi")
+
+
 class ArgumanTestleri(unittest.TestCase):
     def test_ses_donusumu_argumanlari(self):
         a = d.ffmpeg_argumanlari(Path("a.mkv"), Path("b.mp4.tmp"))
