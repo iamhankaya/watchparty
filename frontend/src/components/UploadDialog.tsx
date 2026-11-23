@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { errorMessage } from "../lib/errors";
-import { audioWarning, readMatroskaTracks } from "../lib/matroska";
+import { mkvAudioWarning } from "../lib/matroska";
 import {
   UPLOAD_KEY_STORAGE,
   subtitleFileProblem,
@@ -106,9 +106,9 @@ export function UploadDialog({ canControl, onClose, onOpenInLobby }: Props) {
     if (!file || !file.name.toLowerCase().endsWith(".mkv")) return;
     const ctrl = new AbortController();
     inspectRef.current = ctrl;
-    readMatroskaTracks(file, ctrl.signal)
-      .then((r) => setWarning(audioWarning(r)))
-      .catch(() => {}); // iptal: yeni dosya seçildi
+    mkvAudioWarning(file, ctrl.signal)
+      .then(setWarning)
+      .catch(() => {}); // yalnız iptal reject eder: yeni dosya seçildi
   }
 
   const uploading = phase.kind === "uploading";
