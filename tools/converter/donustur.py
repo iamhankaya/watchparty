@@ -87,6 +87,13 @@ def sure_eslesiyor_mu(girdi_sure: float | None, var_sure: float | None) -> bool:
     return abs(var_sure - girdi_sure) <= max(SURE_PAYI_SN, girdi_sure * SURE_PAYI_ORAN)
 
 
+def cikti_uyumlu_mu(akislar: list[dict]) -> bool:
+    """Var olan -aac.mp4 gerçekten tarayıcıda çalar mı: H.264 video + ilk ses izi AAC (F-watchparty-011)."""
+    video = [a for a in akislar if a.get("codec_type") == "video"]
+    ses = [a for a in akislar if a.get("codec_type") == "audio"]
+    return bool(video and ses and video[0].get("codec_name") == "h264" and ses[0].get("codec_name") == "aac")
+
+
 def cikti_yolu(girdi: Path, cikti_dizini: Path | None) -> Path:
     return (cikti_dizini or girdi.parent) / f"{girdi.stem}{SONEK}.mp4"
 
@@ -132,12 +139,15 @@ def donustur_dosya(girdi: Path, cikti_dizini: Path | None, dry_run: bool) -> Son
     if cikti.exists():
         # Aynı adlı başka kaynağın çıktısı olabilir: süre eşleşmiyorsa yeniden kullanma.
         try:
-            _, var_sure = probe(cikti)
+            var_akislar, var_sure = probe(cikti)
         except DonusturucuHatasi:
-            var_sure = None
+            var_akislar, var_sure = [], None
         if not sure_eslesiyor_mu(girdi_sure, var_sure):
             return Sonuc(girdi, "hata",
                          f"{cikti.name} zaten var ama bu kaynağın çıktısı görünmüyor (süre uyuşmuyor ya da okunamadı); silin ya da başka --cikti verin.")
+        if not cikti_uyumlu_mu(var_akislar):
+            return Sonuc(girdi, "hata",
+                         f"{cikti.name} zaten var ama ses/video tarayıcıda çalmaya uygun değil (H.264 + AAC beklenir); silin ya da başka --cikti verin.")
         return Sonuc(girdi, "atlandi", f"{cikti.name} zaten var, ezilmedi")
     if dry_run:
         return Sonuc(girdi, "donusturulecek", f"{neden}; yazılacak: {cikti}", cikti)
