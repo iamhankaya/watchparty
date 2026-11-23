@@ -75,6 +75,41 @@ class CiktiUyumTestleri(unittest.TestCase):
             self.assertIn("ses", sonuc.mesaj)
             self.assertEqual(cikti.read_bytes(), b"eski")
 
+    def _probe_ile(self, akis):
+        eski = d.probe
+        d.probe = lambda yol: akis[yol]
+        self.addCleanup(setattr, d, "probe", eski)
+
+    def test_dry_run_var_olan_uyumsuz_cikti_yine_hata(self):
+        # --dry-run "donusturulecek" ya da "atlandi" demez: uyumsuz var olan çıktı hata olarak görünür.
+        with tempfile.TemporaryDirectory() as t:
+            kok = Path(t)
+            girdi, cikti = kok / "film.mkv", kok / "film-aac.mp4"
+            girdi.write_bytes(b"g")
+            cikti.write_bytes(b"eski")
+            self._probe_ile({girdi: ([H264, ses("eac3")], 100.0), cikti: ([H264, ses("ac3")], 100.0)})
+            sonuc = d.donustur_dosya(girdi, None, dry_run=True)
+            self.assertEqual(sonuc.durum, "hata")
+            self.assertEqual(cikti.read_bytes(), b"eski")
+
+    def test_var_olan_cikti_okunamazsa_hata_ve_ezilmez(self):
+        with tempfile.TemporaryDirectory() as t:
+            kok = Path(t)
+            girdi, cikti = kok / "film.mkv", kok / "film-aac.mp4"
+            girdi.write_bytes(b"g")
+            cikti.write_bytes(b"bozuk")
+
+            def probe(yol):
+                if yol == cikti:
+                    raise d.DonusturucuHatasi("okunamadı")
+                return [H264, ses("eac3")], 100.0
+
+            eski = d.probe
+            d.probe = probe
+            self.addCleanup(setattr, d, "probe", eski)
+            self.assertEqual(d.donustur_dosya(girdi, None, dry_run=False).durum, "hata")
+            self.assertEqual(cikti.read_bytes(), b"bozuk")
+
     def test_var_olan_uyumlu_cikti_atlanir(self):
         with tempfile.TemporaryDirectory() as t:
             kok = Path(t)
